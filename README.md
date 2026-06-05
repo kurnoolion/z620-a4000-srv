@@ -36,8 +36,14 @@ elsewhere.
 
 ## First-time deploy
 
-Follow [SETUP.md](SETUP.md) — preflight, storage, install-system, `.env`,
-launch. TL;DR once the box is provisioned:
+Two docs, in order:
+1. **[OS_INSTALL.md](OS_INSTALL.md)** — bare metal → Ubuntu Server 24.04 LTS
+   + NVIDIA driver + ssh. Skip if the OS is already up and `nvidia-smi`
+   shows the RTX A4000.
+2. **[SETUP.md](SETUP.md)** — Ubuntu installed → stack serving requests:
+   storage, install-system, `.env`, launch.
+
+TL;DR once the box is provisioned:
 
 ```bash
 cp .env.example .env          # fill in, then chmod 600
@@ -169,4 +175,5 @@ rebalancing, log tail, backups, and a symptom → fix troubleshooting table.
 - `skopeo-pull-stack.sh` (`make pull-stack`) — proxy-friendly image pulls
 - `diagnose-hf.sh` — HF download stall diagnostics
 - `backup.sh` (`make backup`) — config snapshot + optional restic off-box push
+- `OS_INSTALL.md` — bare metal → Ubuntu Server 24.04 + NVIDIA driver + ssh
 - `SETUP.md` / `RUNBOOK.md` / `STORAGE.md` — first-time / day-to-day / disk layout

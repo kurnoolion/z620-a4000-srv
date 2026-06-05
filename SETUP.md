@@ -3,6 +3,11 @@
 Ordered, copy-pasteable procedure to bring the box up from "Ubuntu freshly
 installed, NVIDIA driver installed" to "stack serving requests."
 
+**Before this doc:** if you're starting from bare metal (no OS yet), do
+[OS_INSTALL.md](OS_INSTALL.md) first — it covers the Ubuntu Server 24.04
+install, HP Z620 BIOS settings, NVIDIA driver via `ubuntu-drivers`, and ssh
+setup. Come back here once `nvidia-smi -L` shows the RTX A4000.
+
 Two parts:
 - **Part A — pre-Docker host prep** (storage, hostname, kernel, user).
 - **Part B — Docker stack** (compose, models, gateway, health).
@@ -33,9 +38,9 @@ Required versions:
 - NVIDIA driver **≥ 535** (R535+ is what supports Ampere/sm_86 + CUDA 12.x).
 - Docker Engine **≥ 24** with `nvidia-container-toolkit` installed.
 
-If the driver is older, install the latest stable from
-[nvidia.com/en-us/drivers/](https://www.nvidia.com/en-us/drivers/) (search
-"RTX A4000 Linux") and reboot before continuing.
+If the driver is older or missing, see
+[OS_INSTALL.md §5](OS_INSTALL.md#5-nvidia-driver) — install / upgrade via
+`ubuntu-drivers`, not the `.run` installer.
 
 ### A2. Hostname + mDNS
 
