@@ -1,0 +1,10 @@
+.env
+*.log
+__pycache__/
+.DS_Store
+*.swp
+caddy-data/
+caddy-config/
+models/
+data/
+archive/

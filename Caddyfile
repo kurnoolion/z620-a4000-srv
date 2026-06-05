@@ -1,0 +1,62 @@
+# Caddy gateway for z620-a4000-srv.
+#
+# Unauthenticated — relies on the box being VPN-only / restricted-network.
+# Add basicauth / API-key / IdP if that ever stops being true (see dgx-spark-srv
+# Caddyfile git history for re-add patterns).
+
+{
+	# Suppress the admin warning; we don't expose it.
+	admin off
+	# Default file storage paths for /data and /config live in the volumes.
+}
+
+# HTTPS site — primary endpoint.
+{$SITE_HOST}{$SITE_ADDRESSES} {
+	tls {$TLS_MODE}
+
+	# OpenAI-compatible chat / completions / embeddings (vLLM)
+	handle_path /v1/* {
+		reverse_proxy vllm:8000
+	}
+
+	# Ollama API
+	handle_path /ollama/* {
+		reverse_proxy ollama:11434
+	}
+
+	# TEI — embeddings
+	handle_path /embed/* {
+		reverse_proxy tei:80
+	}
+
+	# TEI — reranker (Cohere-compatible /rerank)
+	handle_path /rerank/* {
+		reverse_proxy tei-reranker:80
+	}
+
+	# Anything else: 404
+	handle {
+		respond 404
+	}
+
+	log {
+		output stdout
+		format console
+	}
+}
+
+# Plain HTTP for cert-averse clients on /v1/* and /rerank/* — same posture as
+# the DGX Spark setup. Everything else gets redirected to HTTPS.
+http://{$SITE_HOST}{$SITE_ADDRESSES} {
+	@plain_v1 path /v1/*
+	@plain_rerank path /rerank/*
+	handle @plain_v1 {
+		reverse_proxy vllm:8000
+	}
+	handle @plain_rerank {
+		reverse_proxy tei-reranker:80
+	}
+	handle {
+		redir https://{host}{uri} 308
+	}
+}

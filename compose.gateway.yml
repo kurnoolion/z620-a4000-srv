@@ -1,0 +1,29 @@
+# Caddy reverse proxy with TLS — same pattern as dgx-spark-srv.
+# Routes: /v1/* → vLLM, /ollama/* → Ollama, /embed/* → TEI, /rerank/* → TEI reranker.
+# Browser access via https://$SITE_HOST/ (hostname only, never IP).
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    container_name: caddy
+    restart: unless-stopped
+    networks: [apex]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      SITE_HOST: ${SITE_HOST}
+      SITE_ADDRESSES: ${SITE_ADDRESSES}
+      TLS_MODE: ${TLS_MODE:-internal}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+networks:
+  apex:
+    external: true
+
+volumes:
+  caddy-data:
+  caddy-config:

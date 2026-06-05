@@ -1,0 +1,142 @@
+# vLLM + Ollama + TEI (embed) + TEI (reranker) on RTX A4000 (16 GB).
+#
+# GPU memory split (default):
+#   vLLM (GPU)         ~10.4 GB  ← VLLM_GPU_UTIL=0.65 of 16 GB
+#   Ollama (GPU)        ~5.6 GB  ← whatever vLLM leaves, OLLAMA_MAX_LOADED_MODELS=1
+#   TEI embed (CPU)         ~0
+#   TEI reranker (CPU)      ~0
+#
+# vLLM starts FIRST and we wait for its /health before launching Ollama,
+# so Ollama can't grab memory vLLM needs to pre-allocate.
+
+x-gpu-reservation: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu]
+
+services:
+  vllm:
+    image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.6.3}
+    container_name: vllm
+    restart: unless-stopped
+    networks: [apex]
+    <<: *gpu
+    environment:
+      HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
+      HF_HOME: /hf-cache
+      VLLM_REASONING_PARSER: ${VLLM_REASONING_PARSER}
+    volumes:
+      - ${ARCHIVE_ROOT}/models/hf-cache:/hf-cache
+      - ${ARCHIVE_ROOT}/models/local:/archive-models:ro
+      - ${ACTIVE_ROOT}/models/local:/active-models:ro
+    # Model resolver: bare name → check /active-models first (SSD, fast),
+    # then /archive-models (HDD); absolute path or HF repo id used as-is.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        set -e
+        M="${VLLM_MODEL}"
+        if [[ "$$M" == /* ]]; then
+          MODEL="$$M"; NAME="$$(basename $$M)"
+        elif [[ "$$M" == */* ]]; then
+          MODEL="$$M"; NAME="$$M"
+        elif [ -d "/active-models/$$M" ]; then
+          MODEL="/active-models/$$M"; NAME="$$M"
+        elif [ -d "/archive-models/$$M" ]; then
+          MODEL="/archive-models/$$M"; NAME="$$M"
+        else
+          echo "ERROR: model '$$M' not found under /active-models or /archive-models" >&2
+          exit 1
+        fi
+        echo "vllm: serving $$MODEL as '$$NAME'"
+        PARSER_FLAG=""
+        [ -n "$$VLLM_REASONING_PARSER" ] && PARSER_FLAG="--reasoning-parser $$VLLM_REASONING_PARSER --enable-reasoning"
+        exec python3 -m vllm.entrypoints.openai.api_server \
+          --host 0.0.0.0 --port 8000 \
+          --model "$$MODEL" \
+          --served-model-name "$$NAME" \
+          --gpu-memory-utilization ${VLLM_GPU_UTIL:-0.65} \
+          --max-model-len ${VLLM_MAX_MODEL_LEN:-8192} \
+          --disable-log-requests \
+          $$PARSER_FLAG
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request,sys; sys.exit(0 if urllib.request.urlopen(\"http://localhost:8000/health\", timeout=2).status==200 else 1)'"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 300s
+    shm_size: "4gb"
+    ipc: host
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    networks: [apex]
+    <<: *gpu
+    depends_on:
+      vllm:
+        condition: service_healthy
+    environment:
+      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
+      OLLAMA_KEEP_ALIVE: "30m"
+      OLLAMA_HOST: "0.0.0.0:11434"
+    volumes:
+      - ${ARCHIVE_ROOT}/models/ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  tei:
+    image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.5}
+    container_name: tei
+    restart: unless-stopped
+    networks: [apex]
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
+      HF_HOME: /hf-cache
+    volumes:
+      - ${ARCHIVE_ROOT}/models/hf-cache:/hf-cache
+    command:
+      - --model-id=${TEI_MODEL:-BAAI/bge-m3}
+      - --port=80
+      - --huggingface-hub-cache=/hf-cache
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+  tei-reranker:
+    image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.5}
+    container_name: tei-reranker
+    restart: unless-stopped
+    networks: [apex]
+    environment:
+      HF_TOKEN: ${HF_TOKEN}
+      HF_HOME: /hf-cache
+    volumes:
+      - ${ARCHIVE_ROOT}/models/hf-cache:/hf-cache
+    command:
+      - --model-id=${TEI_RERANKER_MODEL:-BAAI/bge-reranker-large}
+      - --port=80
+      - --huggingface-hub-cache=/hf-cache
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost/health >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 120s
+
+networks:
+  apex:
+    external: true
