@@ -70,17 +70,21 @@ OVERALL=0
 for m in "${MODELS[@]}"; do
   if [[ "$m" == */* ]]; then
     # Repo ID → cache via HF CLI (if available) else curl fallback.
+    rc=1
     if [ -n "$HF_CLI" ]; then
       echo "[$(date -Iseconds)] hf download $m → $HF_CACHE"
       for try in 1 2 3; do
         HF_HOME="$HF_CACHE" HF_TOKEN="${HF_TOKEN:-}" \
-          "$HF_CLI" download "$m" --local-dir-use-symlinks False 2>&1 | tee -a "$LOG"
+          "$HF_CLI" download "$m" 2>&1 | tee -a "$LOG"
         rc=${PIPESTATUS[0]}
         [ "$rc" -eq 0 ] && break
         echo "  retry $try/3 in 10s..." | tee -a "$LOG"
         sleep 10
       done
-    else
+    fi
+    if [ "$rc" -ne 0 ]; then
+      # hf CLI missing or all retries failed — fall through to single-curl path.
+      echo "[$(date -Iseconds)] hf CLI path failed (rc=$rc) — trying hf-curl-download.sh" | tee -a "$LOG"
       ./hf-curl-download.sh "$m" "$LOCAL_DIR/$(basename "$m")" 2>&1 | tee -a "$LOG"
       rc=${PIPESTATUS[0]}
     fi
