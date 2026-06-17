@@ -70,7 +70,11 @@ while IFS=$'\t' read -r path size; do
   fi
 
   echo "[$n/$TOTAL] $path (expect $size B)"
+  # --http1.1 sidesteps "HTTP/2 stream N was not closed cleanly: CANCEL (err 8)"
+  # — HF's CDN over HTTP/2 drops large streams on flaky / proxied links; HTTP/1.1
+  # keeps the byte stream simple and lets --retry-all-errors actually recover.
   curl --fail --location \
+       --http1.1 \
        --continue-at - \
        --retry 100 --retry-all-errors --retry-delay 5 --retry-max-time 600 \
        "${AUTH_HEADER[@]}" \
