@@ -105,8 +105,11 @@ services:
       HF_HOME: /hf-cache
     volumes:
       - ${ARCHIVE_ROOT}/models/hf-cache:/hf-cache
+      - ${ARCHIVE_ROOT}/models/local:/local-models:ro
+    # TEI_MODEL is a basename under /archive/models/local (where hf-curl-download.sh
+    # writes). Stays local — no HF round-trip at startup.
     command:
-      - --model-id=${TEI_MODEL:-BAAI/bge-m3}
+      - --model-id=/local-models/${TEI_MODEL:-bge-m3}
       - --port=80
       - --huggingface-hub-cache=/hf-cache
     healthcheck:
@@ -126,8 +129,9 @@ services:
       HF_HOME: /hf-cache
     volumes:
       - ${ARCHIVE_ROOT}/models/hf-cache:/hf-cache
+      - ${ARCHIVE_ROOT}/models/local:/local-models:ro
     command:
-      - --model-id=${TEI_RERANKER_MODEL:-BAAI/bge-reranker-large}
+      - --model-id=/local-models/${TEI_RERANKER_MODEL:-bge-reranker-large}
       - --port=80
       - --huggingface-hub-cache=/hf-cache
     healthcheck:

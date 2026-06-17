@@ -58,10 +58,10 @@ probe() {
   else fail "$name → $code (expected $expect, url=$url)"
   fi
 }
-probe "vLLM /v1/models" "http://localhost/v1/models"
-probe "TEI /embed health" "http://localhost/embed/health"
-probe "TEI /rerank health" "http://localhost/rerank/health"
-probe "Ollama /ollama/api/tags" "http://localhost/ollama/api/tags"
+probe "vLLM /v1/models" "https://$host/v1/models"
+probe "TEI /embed health" "https://$host/embed/health"
+probe "TEI /rerank health" "https://$host/rerank/health"
+probe "Ollama /ollama/api/tags" "https://$host/ollama/api/tags"
 
 sec "Disk"
 for mnt in / /data/active /archive; do
