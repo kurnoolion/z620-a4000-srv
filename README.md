@@ -172,6 +172,7 @@ rebalancing, log tail, backups, and a symptom → fix troubleshooting table.
 - `health.sh` (`make health`) — daily health probes / cron-friendly
 - `download-models.sh` (`make download-models`) — bulk HF model pre-download
 - `hf-curl-download.sh` — single-curl HF download (proxy fallback)
+- `ollama-import.sh` — import a GGUF from HF into Ollama (bypasses registry.ollama.ai)
 - `skopeo-pull-stack.sh` (`make pull-stack`) — proxy-friendly image pulls
 - `diagnose-hf.sh` — HF download stall diagnostics
 - `backup.sh` (`make backup`) — config snapshot + optional restic off-box push
