@@ -86,6 +86,11 @@ services:
       OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
       OLLAMA_KEEP_ALIVE: "30m"
       OLLAMA_HOST: "0.0.0.0:11434"
+    # Direct port for the Ollama CLI (OLLAMA_HOST=http://<box>:11434).
+    # The CLI hits /api/* at the root and doesn't know about Caddy's /ollama
+    # prefix, so it has to talk to ollama directly. Box is VPN-only, no auth.
+    ports:
+      - "11434:11434"
     volumes:
       - ${ARCHIVE_ROOT}/models/ollama:/root/.ollama
     healthcheck:
