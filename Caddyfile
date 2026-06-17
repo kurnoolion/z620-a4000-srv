@@ -46,15 +46,18 @@
 	}
 }
 
-# Plain HTTP for cert-averse clients on /v1/* and /rerank/* — same posture as
-# the DGX Spark setup. Everything else gets redirected to HTTPS.
+# Plain HTTP for cert-averse clients (Ollama CLI, scripts that can't pin a
+# self-signed CA). Same routing semantics as the HTTPS block above:
+# `handle` preserves /v1 for vLLM; `handle_path` strips for the others.
+# Everything else 308-redirects to HTTPS.
 http://{$SITE_HOST}{$SITE_ADDRESSES} {
-	@plain_v1 path /v1/*
-	@plain_rerank path /rerank/*
-	handle @plain_v1 {
+	handle /v1/* {
 		reverse_proxy vllm:8000
 	}
-	handle @plain_rerank {
+	handle_path /ollama/* {
+		reverse_proxy ollama:11434
+	}
+	handle_path /rerank/* {
 		reverse_proxy tei-reranker:80
 	}
 	handle {
