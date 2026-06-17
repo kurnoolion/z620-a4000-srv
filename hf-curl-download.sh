@@ -73,22 +73,44 @@ while IFS=$'\t' read -r path size; do
   # --http1.1 sidesteps "HTTP/2 stream N was not closed cleanly: CANCEL (err 8)"
   # — HF's CDN over HTTP/2 drops large streams on flaky / proxied links; HTTP/1.1
   # keeps the byte stream simple and lets --retry-all-errors actually recover.
-  curl --fail --location \
-       --http1.1 \
-       --continue-at - \
-       --retry 100 --retry-all-errors --retry-delay 5 --retry-max-time 600 \
-       "${AUTH_HEADER[@]}" \
-       -o "$out" \
-       "$url"
+  #
+  # Outer retry loop: curl can exit 0 but leave a file shorter than $size
+  # (proxy buffering, range mishandling, mid-stream truncation). On mismatch
+  # we either resume (local < expected) or wipe and start over (local > expected).
+  MAX_ATTEMPTS="${HF_MAX_ATTEMPTS:-6}"
+  attempt=0
+  while : ; do
+    attempt=$((attempt+1))
 
-  # Verify size.
-  if [ "$size" != "0" ]; then
-    actual=$(stat -c '%s' "$out")
-    if [ "$actual" != "$size" ]; then
-      echo "ERROR: $path size mismatch — expected $size, got $actual" >&2
+    if [ -f "$out" ] && [ "$size" != "0" ]; then
+      pre=$(stat -c '%s' "$out" 2>/dev/null || echo 0)
+      if [ "$pre" -gt "$size" ]; then
+        echo "  [attempt $attempt] local ($pre B) > expected ($size B) — wiping (corrupt)"
+        rm -f "$out"
+      fi
+    fi
+
+    curl --fail --location \
+         --http1.1 \
+         --continue-at - \
+         --retry 100 --retry-all-errors --retry-delay 5 --retry-max-time 600 \
+         "${AUTH_HEADER[@]}" \
+         -o "$out" \
+         "$url" || echo "  [attempt $attempt] curl rc=$?"
+
+    # Accept whatever we got if HF didn't tell us a size.
+    if [ "$size" = "0" ]; then break; fi
+
+    actual=$(stat -c '%s' "$out" 2>/dev/null || echo 0)
+    if [ "$actual" = "$size" ]; then break; fi
+
+    if [ "$attempt" -ge "$MAX_ATTEMPTS" ]; then
+      echo "ERROR: $path size mismatch after $MAX_ATTEMPTS attempts — expected $size, got $actual" >&2
       exit 3
     fi
-  fi
+    echo "  [attempt $attempt/$MAX_ATTEMPTS] got $actual B / $size B — retrying"
+    sleep 5
+  done
 done <<< "$PATHS"
 
 echo "[hf-curl] DONE: $REPO → $DEST"
