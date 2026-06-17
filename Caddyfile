@@ -57,6 +57,9 @@ http://{$SITE_HOST}{$SITE_ADDRESSES} {
 	handle_path /ollama/* {
 		reverse_proxy ollama:11434
 	}
+	handle_path /embed/* {
+		reverse_proxy tei:80
+	}
 	handle_path /rerank/* {
 		reverse_proxy tei-reranker:80
 	}
