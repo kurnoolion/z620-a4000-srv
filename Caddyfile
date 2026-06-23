@@ -10,6 +10,23 @@
 	# Default file storage paths for /data and /config live in the volumes.
 }
 
+# Named path matchers — used by both site blocks below.
+# TEI listens at bare /embed and /rerank, so we match both the bare path and
+# any subpaths, and use `handle` (not `handle_path`) to preserve the prefix.
+# `handle` shorthand only accepts ONE path argument, so multi-path matching
+# requires a named matcher.
+(tei_routes) {
+	@tei_embed   path /embed /embed/*
+	@tei_rerank  path /rerank /rerank/*
+
+	handle @tei_embed {
+		reverse_proxy tei:80
+	}
+	handle @tei_rerank {
+		reverse_proxy tei-reranker:80
+	}
+}
+
 # HTTPS site — primary endpoint.
 {$SITE_HOST}{$SITE_ADDRESSES} {
 	tls {$TLS_MODE}
@@ -25,17 +42,8 @@
 		reverse_proxy ollama:11434
 	}
 
-	# TEI — embeddings. `handle` (preserve prefix); TEI listens at bare /embed.
-	# Match both bare /embed and /embed/* so a POST /embed isn't a 404.
-	handle /embed /embed/* {
-		reverse_proxy tei:80
-	}
-
-	# TEI — reranker (Cohere-compatible /rerank). Same reasoning as /embed:
-	# TEI listens at bare /rerank, and we must match the bare path too.
-	handle /rerank /rerank/* {
-		reverse_proxy tei-reranker:80
-	}
+	# TEI (embed + rerank) — see (tei_routes) snippet above.
+	import tei_routes
 
 	# Anything else: 404
 	handle {
@@ -60,12 +68,7 @@ http://{$SITE_HOST}{$SITE_ADDRESSES} {
 	handle_path /ollama/* {
 		reverse_proxy ollama:11434
 	}
-	handle /embed /embed/* {
-		reverse_proxy tei:80
-	}
-	handle /rerank /rerank/* {
-		reverse_proxy tei-reranker:80
-	}
+	import tei_routes
 	handle {
 		redir https://{host}{uri} 308
 	}
