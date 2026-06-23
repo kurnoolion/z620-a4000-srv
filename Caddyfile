@@ -57,11 +57,14 @@
 }
 
 # Plain HTTP for cert-averse clients (Ollama CLI, scripts that can't pin a
-# self-signed CA). Mirrors HTTPS block routing:
-#   - `handle` preserves the prefix (vLLM serves at /v1; TEI serves at bare /embed, /rerank).
-#   - `handle_path` strips the prefix (Ollama API is at /api/* so /ollama gets stripped).
-# Everything else 308-redirects to HTTPS.
-http://{$SITE_HOST}{$SITE_ADDRESSES} {
+# self-signed CA). `:80` matches ANY Host header on port 80 — so clients can
+# reach these routes by hostname, IP, or localhost without TLS or Host-header
+# fiddling. Same routing semantics as the HTTPS block:
+#   - `handle` preserves the prefix (vLLM /v1; TEI bare /embed, /rerank).
+#   - `handle_path` strips the prefix (Ollama API is at /api/*).
+# Unmatched paths 404 (NOT a redirect to HTTPS — for IP-Host clients the
+# HTTPS redirect would just fail at the TLS handshake; better to 404 cleanly).
+:80 {
 	handle /v1/* {
 		reverse_proxy vllm:8000
 	}
@@ -70,6 +73,6 @@ http://{$SITE_HOST}{$SITE_ADDRESSES} {
 	}
 	import tei_routes
 	handle {
-		redir https://{host}{uri} 308
+		respond 404
 	}
 }
