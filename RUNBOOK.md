@@ -37,8 +37,9 @@ vLLM serves **one** model at a time. Switching:
 # 2. Update VLLM_MODEL in .env to the bare name (resolver finds it).
 sed -i 's|^VLLM_MODEL=.*|VLLM_MODEL=Qwen2.5-14B-Instruct-AWQ|' .env
 
-# 3. Restart vLLM (only).
-make restart svc=vllm
+# 3. Recreate vLLM (only). NOT `make restart` — restart keeps the old
+#    container, which has the old model name baked into its command.
+make apply svc=vllm
 ```
 
 Cold reload: 1-3 min for a 7B AWQ off SSD page-cache, 3-5 min off HDD cold.
@@ -84,12 +85,20 @@ make vllm-start
 
 ### TEI — switching embedding or reranker model
 
-```bash
-sed -i 's|^TEI_MODEL=.*|TEI_MODEL=BAAI/bge-large-en-v1.5|' .env
-make restart svc=tei
+`TEI_MODEL` / `TEI_RERANKER_MODEL` are **bare basenames** under
+`/archive/models/local/` (compose prepends `/local-models/` itself — a full
+path or `Org/Name` repo ID in `.env` will NOT load). Download first, then
+point `.env` at the basename:
 
-sed -i 's|^TEI_RERANKER_MODEL=.*|TEI_RERANKER_MODEL=mixedbread-ai/mxbai-rerank-large-v1|' .env
-make restart svc=tei-reranker
+```bash
+./hf-curl-download.sh BAAI/bge-large-en-v1.5
+# → /archive/models/local/bge-large-en-v1.5
+sed -i 's|^TEI_MODEL=.*|TEI_MODEL=bge-large-en-v1.5|' .env
+make apply svc=tei
+
+./hf-curl-download.sh mixedbread-ai/mxbai-rerank-large-v1
+sed -i 's|^TEI_RERANKER_MODEL=.*|TEI_RERANKER_MODEL=mxbai-rerank-large-v1|' .env
+make apply svc=tei-reranker
 ```
 
 TEI is picky about models: needs ONNX weights and a `model_type` field in
@@ -144,6 +153,12 @@ make restart svc=tei            # ~1 min
 make restart svc=tei-reranker   # ~1 min
 make restart svc=caddy          # near-instant
 ```
+
+`restart` re-runs the **existing** container — it does not pick up `.env` or
+compose-file edits (those are baked in at container creation). After changing
+either, use `make apply svc=<name>` instead. Exception: the Caddyfile is
+bind-mounted and re-parsed on start, so `make restart svc=caddy` is enough
+for Caddyfile-only changes.
 
 Full restart: `make down && make up` (vLLM reloads from scratch).
 

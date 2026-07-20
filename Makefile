@@ -14,7 +14,7 @@ endif
 COMPOSE_FILES := -f compose.inference.yml -f compose.gateway.yml
 COMPOSE := docker compose $(COMPOSE_FILES)
 
-.PHONY: help init up down restart logs ps health \
+.PHONY: help init up down restart apply logs ps health \
         vllm-start vllm-stop rebalance \
         download-models pull-stack \
         install-system prune prune-status backup
@@ -41,9 +41,13 @@ up:  ## Bring up the stack (vLLM first, then Ollama + TEI + gateway).
 down:  ## Stop everything (containers + network state).
 	$(COMPOSE) down
 
-restart:  ## Restart one service: `make restart svc=vllm`
+restart:  ## Restart one service (does NOT apply .env/compose changes): `make restart svc=vllm`
 	@test -n "$(svc)" || { echo "usage: make restart svc=<vllm|ollama|tei|tei-reranker|caddy>"; exit 1; }
 	$(COMPOSE) restart $(svc)
+
+apply:  ## Recreate a service so .env/compose changes take effect: `make apply svc=vllm`
+	@test -n "$(svc)" || { echo "usage: make apply svc=<vllm|ollama|tei|tei-reranker|caddy>"; exit 1; }
+	$(COMPOSE) up -d $(svc)
 
 logs:  ## Tail logs. `make logs svc=vllm` or omit svc for all.
 	$(COMPOSE) logs -f --tail=200 $(svc)
