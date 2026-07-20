@@ -98,6 +98,10 @@ for m in "${MODELS[@]}"; do
       Qwen3-8B-AWQ)                   repo="Qwen/Qwen3-8B-AWQ" ;;
       Mistral-7B-Instruct-v0.3-AWQ)   repo="solidrust/Mistral-7B-Instruct-v0.3-AWQ" ;;
       Meta-Llama-3.1-8B-Instruct-AWQ) repo="hugging-quants/Meta-Llama-3.1-8B-Instruct-AWQ-INT4" ;;
+      bge-m3)                         repo="BAAI/bge-m3" ;;
+      bge-large-en-v1.5)              repo="BAAI/bge-large-en-v1.5" ;;
+      bge-reranker-large)             repo="BAAI/bge-reranker-large" ;;
+      mxbai-rerank-large-v1)          repo="mixedbread-ai/mxbai-rerank-large-v1" ;;
       *)
         echo "ERROR: bare name '$m' has no default repo mapping — pass full Org/Name." >&2
         OVERALL=1
