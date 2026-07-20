@@ -59,8 +59,9 @@ make health
 |---|---|---|
 | `/v1/*` | vLLM :8000 | OpenAI-compatible chat / completions. **Also on plain HTTP** so cert-averse clients (nora/hilda RAG pipelines) can skip TLS. |
 | `/ollama/*` | Ollama :11434 | Ollama API (model pull, generate, chat) |
-| `/embed/*` | TEI :80 | embeddings (`/embed`, `/v1/embeddings`) |
+| `/embed/*` | TEI :80 | TEI-native embeddings (`{"inputs":[...]}` → `[[floats]]`) |
 | `/rerank/*` | TEI reranker :80 | reranking (Cohere-compatible `/rerank`). **Also on plain HTTP** for the same reason. |
+| `/tei/*` | TEI :80 (prefix stripped) | OpenAI-compatible embeddings: `POST /tei/v1/embeddings` with `{"model","input":[...]}` → `{"data":[{"index","embedding"}]}`. The request's `model` value is ignored (TEI serves one model); the response echoes the served `--model-id` path. |
 
 Everything else: 404.
 

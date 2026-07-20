@@ -34,6 +34,15 @@
 		rewrite /rerank/health /health
 		reverse_proxy tei-reranker:80
 	}
+
+	# OpenAI-compatible clients: /tei/v1/embeddings → TEI /v1/embeddings
+	# ({"model","input":[...]} → {"data":[{"index","embedding"}]}).
+	# handle_path strips /tei, exposing TEI's whole native surface under the
+	# prefix (/tei/embed, /tei/health, ... also work). Can't live under /v1 —
+	# that belongs to vLLM in both site blocks.
+	handle_path /tei/* {
+		reverse_proxy tei:80
+	}
 }
 
 # HTTPS site — primary endpoint.
