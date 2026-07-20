@@ -84,4 +84,9 @@
 	handle {
 		respond 404
 	}
+
+	log {
+		output stdout
+		format console
+	}
 }

@@ -45,9 +45,9 @@ restart:  ## Restart one service (does NOT apply .env/compose changes): `make re
 	@test -n "$(svc)" || { echo "usage: make restart svc=<vllm|ollama|tei|tei-reranker|caddy>"; exit 1; }
 	$(COMPOSE) restart $(svc)
 
-apply:  ## Recreate a service so .env/compose changes take effect: `make apply svc=vllm`
+apply:  ## Recreate a service so .env/compose/Caddyfile changes take effect: `make apply svc=vllm`
 	@test -n "$(svc)" || { echo "usage: make apply svc=<vllm|ollama|tei|tei-reranker|caddy>"; exit 1; }
-	$(COMPOSE) up -d $(svc)
+	$(COMPOSE) up -d --force-recreate $(svc)
 
 logs:  ## Tail logs. `make logs svc=vllm` or omit svc for all.
 	$(COMPOSE) logs -f --tail=200 $(svc)
