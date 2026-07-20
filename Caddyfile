@@ -7,6 +7,11 @@
 {
 	# Suppress the admin warning; we don't expose it.
 	admin off
+	# Auto-HTTPS still issues certs for the HTTPS site, but must NOT inject
+	# HTTP→HTTPS redirects: they land on port 80 AHEAD of our `:80` block, so
+	# any request with Host == SITE_HOST got 308'd to HTTPS instead of reaching
+	# the plain-HTTP routes (the whole point of the `:80` block).
+	auto_https disable_redirects
 	# Default file storage paths for /data and /config live in the volumes.
 }
 
