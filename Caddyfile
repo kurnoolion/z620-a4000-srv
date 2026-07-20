@@ -20,9 +20,13 @@
 	@tei_rerank  path /rerank /rerank/*
 
 	handle @tei_embed {
+		# TEI's health route lives at the root; map the gateway path onto it
+		# (health.sh probes /embed/health).
+		rewrite /embed/health /health
 		reverse_proxy tei:80
 	}
 	handle @tei_rerank {
+		rewrite /rerank/health /health
 		reverse_proxy tei-reranker:80
 	}
 }
