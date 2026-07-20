@@ -17,6 +17,7 @@ services:
       TLS_MODE: ${TLS_MODE:-internal}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./status:/data/status:ro
       - caddy-data:/data
       - caddy-config:/config
 

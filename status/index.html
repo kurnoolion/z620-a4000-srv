@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Service Status — 105.52.91.247</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: linear-gradient(135deg, #fdf6ec 0%, #faf0e6 50%, #f5ebe0 100%);
+  color: #5c4033; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  min-height: 100vh; padding: 20px;
+}
+h1 { font-size: 1.5rem; margin-bottom: 5px; color: #8b5e3c; }
+.subtitle { color: #b08968; font-size: 0.85rem; margin-bottom: 20px; }
+.header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.controls { display: flex; gap: 10px; align-items: center; }
+button {
+  background: #cb997e; color: #fff; border: none; padding: 8px 16px; border-radius: 8px;
+  cursor: pointer; font-size: 0.85rem; transition: all 0.2s; box-shadow: 0 2px 4px rgba(139,94,60,0.15);
+}
+button:hover { background: #b08968; transform: translateY(-1px); box-shadow: 0 3px 6px rgba(139,94,60,0.2); }
+button:disabled { background: #ddb892; cursor: not-allowed; transform: none; box-shadow: none; }
+.last-check { color: #b08968; font-size: 0.75rem; }
+.grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+  gap: 16px;
+}
+.card {
+  background: #fffaf5; border: 1px solid #e8d5c4; border-radius: 12px; padding: 16px;
+  transition: all 0.3s; box-shadow: 0 2px 8px rgba(139,94,60,0.08);
+}
+.card:hover { box-shadow: 0 4px 12px rgba(139,94,60,0.15); }
+.card.online { border-left: 3px solid #7cb342; }
+.card.offline { border-left: 3px solid #e57373; }
+.card.checking { border-left: 3px solid #ffb74d; }
+.card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.card-title { font-size: 1rem; font-weight: 600; display: flex; align-items: center; gap: 8px; color: #6d4c41; }
+.dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.dot.green { background: #7cb342; box-shadow: 0 0 6px #7cb342; }
+.dot.red { background: #e57373; box-shadow: 0 0 6px #e57373; }
+.dot.yellow { background: #ffb74d; box-shadow: 0 0 6px #ffb74d; animation: pulse 1s infinite; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+.card-meta { font-size: 0.75rem; color: #b08968; }
+.card-body { font-size: 0.82rem; line-height: 1.5; }
+.card-body .label { color: #b08968; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 8px; }
+.card-body .value { color: #5c4033; margin-top: 2px; word-break: break-all; }
+.card-body .response-box {
+  background: #fdf6ec; border: 1px solid #e8d5c4; border-radius: 6px; padding: 8px;
+  margin-top: 4px; font-family: 'SF Mono', Consolas, monospace; font-size: 0.78rem;
+  max-height: 120px; overflow-y: auto; white-space: pre-wrap;
+}
+.card-body .response-box.empty { color: #b08968; font-style: italic; }
+.response-time { font-size: 0.7rem; color: #b08968; margin-top: 6px; }
+.error-msg { color: #e57373; font-size: 0.78rem; margin-top: 4px; }
+</style>
+</head>
+<body>
+
+<div class="header-bar">
+  <div>
+    <h1>🤖 AI Service Status</h1>
+    <div class="subtitle">NVIDIA PC · z620-a4000-srv · 105.52.91.247</div>
+  </div>
+  <div class="controls">
+    <span class="last-check" id="lastCheck">Never checked</span>
+    <a href="http://105.52.150.232:34000/" target="_blank" style="background:#b08968; color:#fff; text-decoration:none; padding:8px 16px; border-radius:8px; font-size:0.85rem; transition:all 0.2s; box-shadow:0 2px 4px rgba(139,94,60,0.15); display:inline-flex; align-items:center; gap:6px;">🏠 MNO Hub</a>
+    <a href="http://105.52.150.232:34000/mno-llm-chatbot/" target="_blank" style="background:#cb997e; color:#fff; text-decoration:none; padding:8px 16px; border-radius:8px; font-size:0.85rem; transition:all 0.2s; box-shadow:0 2px 4px rgba(139,94,60,0.15); display:inline-flex; align-items:center; gap:6px;">💬 Try LLM Chatbot</a>
+    <button id="refreshBtn" onclick="checkAll()">🔄 Refresh All</button>
+  </div>
+</div>
+
+<div class="grid" id="grid"></div>
+
+<script>
+const BASE = 'http://105.52.91.247';
+
+const services = [
+  {
+    id: 'vllm', name: 'vLLM Chat', icon: '💬',
+    async check() {
+      const t0 = performance.now();
+      const res = await fetch(`${BASE}/v1/chat/completions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'Qwen2.5-7B-Instruct-AWQ',
+          messages: [{ role: 'user', content: 'Say hi in 5 words' }],
+          max_tokens: 20
+        })
+      });
+      const ms = Math.round(performance.now() - t0);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const reply = data.choices?.[0]?.message?.content || '(empty)';
+      const model = data.model || 'unknown';
+      const tokens = data.usage?.total_tokens || '?';
+      return { ms, model, reply: `💬 "${reply}"`, extra: `Model: ${model} | Tokens: ${tokens}` };
+    }
+  },
+  {
+    id: 'ollama', name: 'Ollama', icon: '🦙',
+    async check() {
+      const t0 = performance.now();
+      const res = await fetch(`${BASE}/ollama/api/tags`);
+      const ms = Math.round(performance.now() - t0);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const models = data.models || [];
+      if (models.length === 0) {
+        return { ms, model: 'none', reply: 'No models loaded', extra: 'Container running, no models imported' };
+      }
+      const names = models.map(m => `${m.name} (${(m.size/1e9).toFixed(1)}GB)`).join(', ');
+      return { ms, model: names, reply: `📦 ${models.length} model(s): ${names}`, extra: `Quant: ${models[0].details?.quantization_level || 'n/a'}` };
+    }
+  },
+  {
+    id: 'tei-embed', name: 'TEI Embeddings', icon: '🔢',
+    async check() {
+      const t0 = performance.now();
+      const res = await fetch(`${BASE}/embed`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inputs: 'hello world' })
+      });
+      const ms = Math.round(performance.now() - t0);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const emb = Array.isArray(data) ? data[0] : data;
+      const dim = emb.length;
+      const preview = emb.slice(0, 5).map(v => v.toFixed(4)).join(', ');
+      return { ms, model: `bge-m3 (${dim}-dim)`, reply: `🔢 ${dim}-dim vector`, extra: `First 5: [${preview}, ...]` };
+    }
+  },
+  {
+    id: 'tei-rerank', name: 'TEI Reranker', icon: '📊',
+    async check() {
+      const t0 = performance.now();
+      const res = await fetch(`${BASE}/rerank`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: 'What is AI?',
+          texts: ['Artificial intelligence is machine intelligence.', 'The sky is blue today.']
+        })
+      });
+      const ms = Math.round(performance.now() - t0);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const scores = Array.isArray(data) ? data : (data.results || []);
+      const scoreStr = scores.map((s, i) => `Doc ${i}: ${s.score?.toFixed(4) || s}`).join(' | ');
+      return { ms, model: 'bge-reranker-large', reply: `📊 Relevance scores: ${scoreStr}`, extra: `Query: "What is AI?" | 2 docs ranked` };
+    }
+  }
+];
+
+function createCard(svc) {
+  return `
+    <div class="card checking" id="card-${svc.id}">
+      <div class="card-header">
+        <div class="card-title">${svc.icon} ${svc.name}</div>
+        <span class="dot yellow" id="dot-${svc.id}"></span>
+      </div>
+      <div class="card-body">
+        <div class="label">Status</div>
+        <div class="value" id="status-${svc.id}">Checking...</div>
+        <div class="label">Response</div>
+        <div class="response-box empty" id="response-${svc.id}">Waiting...</div>
+        <div class="label">Details</div>
+        <div class="value" id="extra-${svc.id}" style="color:#b08968">—</div>
+        <div class="response-time" id="time-${svc.id}"></div>
+      </div>
+    </div>
+  `;
+}
+
+function updateCard(id, state, result, error) {
+  const card = document.getElementById(`card-${id}`);
+  const dot = document.getElementById(`dot-${id}`);
+  const status = document.getElementById(`status-${id}`);
+  const response = document.getElementById(`response-${id}`);
+  const extra = document.getElementById(`extra-${id}`);
+  const time = document.getElementById(`time-${id}`);
+
+  card.classList.remove('checking', 'online', 'offline');
+
+  if (state === 'checking') {
+    card.classList.add('checking');
+    dot.className = 'dot yellow';
+    status.textContent = 'Checking...';
+    response.className = 'response-box empty';
+    response.textContent = 'Waiting...';
+    extra.textContent = '—';
+    time.textContent = '';
+  } else if (state === 'online') {
+    card.classList.add('online');
+    dot.className = 'dot green';
+    status.innerHTML = `<span style="color:#7cb342">✅ Online</span>`;
+    response.className = 'response-box';
+    response.textContent = result.reply;
+    extra.textContent = result.extra || '';
+    time.textContent = `⚡ ${result.ms}ms`;
+  } else {
+    card.classList.add('offline');
+    dot.className = 'dot red';
+    status.innerHTML = `<span style="color:#e57373">❌ Offline</span>`;
+    response.className = 'response-box';
+    response.textContent = error || 'Unknown error';
+    extra.textContent = '—';
+    time.textContent = '';
+  }
+}
+
+async function checkService(svc) {
+  updateCard(svc.id, 'checking');
+  try {
+    const result = await svc.check();
+    updateCard(svc.id, 'online', result);
+  } catch (err) {
+    updateCard(svc.id, 'offline', null, err.message);
+  }
+}
+
+async function checkAll() {
+  const btn = document.getElementById('refreshBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Checking...';
+  document.getElementById('lastCheck').textContent = 'Checking...';
+
+  await Promise.all(services.map(s => checkService(s)));
+
+  const now = new Date();
+  document.getElementById('lastCheck').textContent = `Last: ${now.toLocaleTimeString()}`;
+  btn.disabled = false;
+  btn.textContent = '🔄 Refresh All';
+}
+
+// Init
+document.getElementById('grid').innerHTML = services.map(createCard).join('');
+checkAll();
+setInterval(checkAll, 60000);
+</script>
+
+</body>
+</html>

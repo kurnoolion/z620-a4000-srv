@@ -63,6 +63,13 @@
 	# TEI (embed + rerank) — see (tei_routes) snippet above.
 	import tei_routes
 
+	# Status dashboard — static HTML.
+	redir /health-status /health-status/ 308
+	handle_path /health-status/* {
+		root * /data/status
+		file_server
+	}
+
 	# Anything else: 404
 	handle {
 		respond 404
@@ -90,6 +97,14 @@
 		reverse_proxy ollama:11434
 	}
 	import tei_routes
+
+	# Status dashboard — static HTML.
+	redir /health-status /health-status/ 308
+	handle_path /health-status/* {
+		root * /data/status
+		file_server
+	}
+
 	handle {
 		respond 404
 	}
