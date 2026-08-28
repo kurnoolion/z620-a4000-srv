@@ -11,6 +11,10 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    # Lets the /grafana/ route reach the standalone claude-usage stack on the
+    # host (see Caddyfile grafana_route).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       SITE_HOST: ${SITE_HOST}
       SITE_ADDRESSES: ${SITE_ADDRESSES:-}

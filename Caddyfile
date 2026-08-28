@@ -45,12 +45,16 @@
 	}
 }
 
-# Grafana (Claude Code usage dashboards) — prefix preserved; Grafana serves
-# from the /grafana sub-path (GF_SERVER_SERVE_FROM_SUB_PATH in compose.observability.yml).
+# Grafana (Claude Code usage dashboards) — served by the STANDALONE
+# claude-usage/ stack (own compose project, own network), reached via its
+# host port. Caddy resolves host.docker.internal through the `extra_hosts`
+# entry in compose.gateway.yml. claude-usage/.env must set
+# GRAFANA_ROOT_URL=https://<SITE_HOST>/grafana/ and GRAFANA_SUB_PATH=true.
+# Returns 502 (not a crash) if that stack isn't running.
 (grafana_route) {
 	redir /grafana /grafana/ 308
 	handle /grafana/* {
-		reverse_proxy grafana:3000
+		reverse_proxy host.docker.internal:3000
 	}
 }
 

@@ -46,31 +46,30 @@ console.
 
 ## Setup
 
-### 1. This box — bring up the stack
+### 1. Server — bring up the stack
 
-`compose.observability.yml` is already in the `make` file set.
+This directory is a standalone compose project; run it here or copy it anywhere.
 
 ```bash
-cp .env.example .env         # if not done: set GRAFANA_PASSWORD (+ PROM_RETENTION, GRAFANA_ANON_VIEW)
-make init                    # creates $ACTIVE_ROOT/srv/{prometheus,grafana} with correct owners
-make up                      # or: docker compose -f compose.observability.yml up -d
-make apply svc=caddy         # picks up the new /grafana route
+make init                    # .env from template (edit GRAFANA_PASSWORD) + data dirs; no sudo
+make up
+make status                  # containers, collector endpoint, Prometheus target, users seen
 sudo ufw allow from <LAN-CIDR> to any port 4317 proto tcp   # if ufw is on
 ```
 
-Checks: `curl -s localhost:8889/metrics | head` answers (empty until a client
-sends); `http://<box>/grafana/` loads; Prometheus target `claude-code` is UP
-(`docker exec prometheus wget -qO- localhost:9090/api/v1/targets | grep -o '"health":"[a-z]*"'`).
+Grafana is at `http://<host>:3000/`. Co-hosted on the z620 behind Caddy, set
+`GRAFANA_ROOT_URL=https://<SITE_HOST>/grafana/` and `GRAFANA_SUB_PATH=true`
+in `.env` and use `https://<SITE_HOST>/grafana/` instead.
 
 ### 2. Developer machines — install managed settings (once each)
 
 ```bash
 # Linux / WSL (as root)
-cd clients/claude-code && sudo ./install-managed-settings.sh <box-ip> <team>
+sudo ./clients/claude-code/install-managed-settings.sh <server-ip> <team>
 ```
 ```powershell
 # Windows (elevated PowerShell)
-cd clients\claude-code; .\Install-ManagedSettings.ps1 -Collector <box-ip> -Team <team>
+.\clients\claude-code\Install-ManagedSettings.ps1 -Collector <server-ip> -Team <team>
 ```
 
 Use the box's **IP address** unless you know the hostname resolves on *every*
@@ -83,7 +82,7 @@ own numbers.
 
 ### 3. Grafana
 
-Dashboard **APEX — Claude Code Usage** at `http://<box>/grafana/d/apex-claude-code-usage`.
+Dashboard **APEX — Claude Code Usage** at `http://<host>:3000/d/apex-claude-code-usage` (or `/grafana/d/...` behind Caddy).
 Anonymous *view* is on by default (`GRAFANA_ANON_VIEW=true`) so the whole
 team can see it; the admin login is needed only to edit.
 
@@ -216,16 +215,17 @@ split the dashboard by machine (shared workstation vs. each Windows PC).
   `OTEL_LOGS_EXPORTER=none`; to enable, add Loki to the stack, a `logs`
   pipeline to `observability/otel-collector.yml`, and flip the env var.
 - **RAM.** The three containers are capped at 384 + 512 + 512 MB in compose;
-  real use is well under that. If the box gets tight, drop Grafana and read
-  Prometheus directly, or shorten `PROM_RETENTION`.
+  real use is well under that. The stack is standalone, so if a host gets
+  tight it can move to any other Docker box — only the `OTEL_EXPORTER_OTLP_ENDPOINT`
+  on the clients changes (re-run the installers).
 
 ## Troubleshooting
 
 | Symptom | Check |
 |---|---|
-| Dashboard empty | `make logs svc=otel-collector` — anything arriving? If not, it's client-side. |
+| Dashboard empty | `make status`, then `make logs svc=otel-collector` — anything arriving? If not, it's client-side. |
 | A client sends nothing | Managed file present at the OS-specific path? Inside `claude`, `/status` shows the env. TCP check: `bash -c '</dev/tcp/<box-ip>/4317'` or `Test-NetConnection <box-ip> -Port 4317`. |
-| Collector receives, Prometheus empty | Prometheus target `claude-code` should be UP at `otel-collector:8889`. `make apply svc=prometheus` if the scrape job predates it. |
+| Collector receives, Prometheus empty | `make status` shows the `claude-code` target; `make restart svc=prometheus` if needed. |
 | Series but wrong names | Uncomment the `debug` exporter in `otel-collector.yml`, add it to the metrics pipeline, read raw names in the collector log. |
 | `/model` still shows everything | Managed file not being read (wrong path — `ProgramData` on Windows is the usual mistake), or the user is in a cloud session. |
 | Grant not visible | `/model` inside a NEW session; `claude-model-grant list` shows it active; drop-in dir is `managed-settings.d` next to the base file. |
@@ -233,7 +233,6 @@ split the dashboard by machine (shared workstation vs. each Windows PC).
 
 ## Removing it
 
-Box: `docker compose -f compose.observability.yml down` and drop the file
-from `COMPOSE_FILES` in the Makefile. Clients: delete the managed file (a
+Server: `make down` (data kept under `DATA_ROOT`; delete it to purge). Clients: delete the managed file (a
 `.bak` of any previous file sits beside it); the next `claude` start is
 back to user settings.

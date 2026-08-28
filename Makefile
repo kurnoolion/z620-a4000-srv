@@ -11,13 +11,13 @@ include .env
 export
 endif
 
-COMPOSE_FILES := -f compose.inference.yml -f compose.gateway.yml -f compose.observability.yml
+COMPOSE_FILES := -f compose.inference.yml -f compose.gateway.yml
 COMPOSE := docker compose $(COMPOSE_FILES)
 
 .PHONY: help init up down restart apply logs ps health \
         vllm-start vllm-stop rebalance \
         download-models pull-stack \
-        install-system prune prune-status backup
+        install-system prune prune-status backup usage-up usage-down usage-status
 
 help:  ## Show this help.
 	@awk 'BEGIN{FS=":.*##"; printf "Targets:\n"} /^[a-zA-Z_-]+:.*##/ {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -27,9 +27,6 @@ init:  ## Create docker network + storage roots. Run once.
 	@mkdir -p $${ACTIVE_ROOT:-/data/active}/models/local
 	@mkdir -p $${ARCHIVE_ROOT:-/archive}/models/{hf-cache,local,ollama}
 	@mkdir -p $${ARCHIVE_ROOT:-/archive}/backups
-	@mkdir -p $${ACTIVE_ROOT:-/data/active}/srv/{prometheus,grafana}
-	@sudo chown 65534:65534 $${ACTIVE_ROOT:-/data/active}/srv/prometheus   # prometheus runs as nobody
-	@sudo chown 472:472     $${ACTIVE_ROOT:-/data/active}/srv/grafana      # grafana runs as uid 472
 	@echo "init: network 'apex' ready; storage roots created."
 
 up:  ## Bring up the stack (vLLM first, then Ollama + TEI + gateway).
@@ -45,11 +42,11 @@ down:  ## Stop everything (containers + network state).
 	$(COMPOSE) down
 
 restart:  ## Restart one service (does NOT apply .env/compose changes): `make restart svc=vllm`
-	@test -n "$(svc)" || { echo "usage: make restart svc=<vllm|ollama|tei|tei-reranker|caddy|otel-collector|prometheus|grafana>"; exit 1; }
+	@test -n "$(svc)" || { echo "usage: make restart svc=<vllm|ollama|tei|tei-reranker|caddy>"; exit 1; }
 	$(COMPOSE) restart $(svc)
 
 apply:  ## Recreate a service so .env/compose/Caddyfile changes take effect: `make apply svc=vllm`
-	@test -n "$(svc)" || { echo "usage: make apply svc=<vllm|ollama|tei|tei-reranker|caddy|otel-collector|prometheus|grafana>"; exit 1; }
+	@test -n "$(svc)" || { echo "usage: make apply svc=<vllm|ollama|tei|tei-reranker|caddy>"; exit 1; }
 	$(COMPOSE) up -d --force-recreate $(svc)
 
 logs:  ## Tail logs. `make logs svc=vllm` or omit svc for all.
@@ -94,3 +91,15 @@ prune-status:  ## Show reclaimable docker space (read-only).
 
 backup:  ## Run backup.sh (config + models manifest + restic if configured).
 	@./backup.sh
+
+# ── Claude Code usage observability (standalone stack in claude-usage/) ────
+# Independent compose project; Caddy proxies /grafana/ to its host port 3000.
+# Full interface: `make -C claude-usage help`.
+usage-up:  ## Start the claude-usage stack (collector + Prometheus + Grafana).
+	@$(MAKE) -C claude-usage init up
+
+usage-down:  ## Stop the claude-usage stack.
+	@$(MAKE) -C claude-usage down
+
+usage-status:  ## Health of the claude-usage stack.
+	@$(MAKE) -C claude-usage status
