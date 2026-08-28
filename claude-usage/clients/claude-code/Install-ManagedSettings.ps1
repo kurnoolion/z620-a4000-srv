@@ -16,13 +16,20 @@
   WSL on the same PC is separate: run install-managed-settings.sh inside WSL
   (or set "wslInheritsWindowsSettings" — see CLAUDE-CODE-TELEMETRY.md).
 
+.PARAMETER MonitorOnly
+  Telemetry only: do NOT install the model allowlist (and REMOVE one a previous
+  run installed). For the baseline phase — see CLAUDE-CODE-TELEMETRY.md
+  "Migrating existing users". Re-run without the switch to enforce.
+
 .EXAMPLE
   PS> .\Install-ManagedSettings.ps1 -Collector 10.0.0.42 -Team modem-logs
+  PS> .\Install-ManagedSettings.ps1 -Collector 10.0.0.42 -Team modem-logs -MonitorOnly
 #>
 [CmdletBinding()]
 param(
   [Parameter(Mandatory = $true)] [string] $Collector,
-  [string] $Team = "apex"
+  [string] $Team = "apex",
+  [switch] $MonitorOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -56,9 +63,15 @@ if ($cur["env"] -is [System.Collections.IDictionary]) {
 }
 foreach ($p in $new.env.PSObject.Properties) { $envMerged[$p.Name] = $p.Value }
 $cur["env"] = $envMerged
+$modelKeys = @("availableModels", "enforceAvailableModels")
 foreach ($p in $new.PSObject.Properties) {
-  if ($p.Name -ne "env") { $cur[$p.Name] = $p.Value }
+  if ($p.Name -eq "env") { continue }
+  if ($MonitorOnly -and $modelKeys -contains $p.Name) { continue }
+  $cur[$p.Name] = $p.Value
 }
+if ($MonitorOnly) { foreach ($k in $modelKeys) { $cur.Remove($k) } }
+$mode = if ($MonitorOnly) { "MONITOR-ONLY (no model allowlist)" } else { "telemetry + model allowlist $($cur['availableModels'] -join ', ')" }
+Write-Host "mode: $mode"
 
 New-Item -ItemType Directory -Force -Path $dstDir | Out-Null
 ($cur | ConvertTo-Json -Depth 10) | Set-Content -Path $dst -Encoding UTF8

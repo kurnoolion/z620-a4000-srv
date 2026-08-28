@@ -162,6 +162,76 @@ Caveats:
   if Fable isn't on your Teams tier, listing it does nothing.
 - Log of expiries: `/var/log/claude-model-grants.log` (Linux).
 
+## Migrating existing users
+
+People already using Claude Code are barely affected by the telemetry, and
+*are* affected by the model allowlist. Roll out in that order: measure first,
+restrict second.
+
+### What changes for an existing user
+
+| | Effect |
+|---|---|
+| Their `~/.claude/settings.json`, permissions, hooks, MCP servers, `CLAUDE.md`, memory, history, custom agents | **Untouched.** Managed settings merge on top and win only for the keys they set. No reinstall, no re-login. |
+| Telemetry | Invisible. No latency, no prompts. Fails silently if the collector is unreachable. **No backfill** — usage before install day isn't in the dashboard. |
+| Running sessions | Unchanged until the next `claude` start. Nobody is interrupted. |
+| Model allowlist | Opus/Fable vanish from `/model` at the next start. Anyone with `"model": "opus"` in their settings, `ANTHROPIC_MODEL=opus`, or a `--model opus` habit gets forced to an allowed model. |
+| Privacy | `user_email` now leaves the machine for your server — announce it, don't let it be discovered. |
+
+**Unverified edge cases — test in phase 1, then record the answer here:**
+- A disallowed model configured in user settings / env: quiet fallback, or startup error?
+- `--resume` of a session that ran on Opus.
+- Custom subagents with `model: opus` in their frontmatter — does the allowlist reach them?
+
+**Out of scope, say so explicitly:** machines you don't manage (personal
+laptops) and Claude Code *cloud* sessions launched from the web — managed
+settings don't reach them.
+
+### Phases
+
+**0 · Inventory (a day).** Who uses Claude Code, on which machines (shared
+workstation / Windows PC / WSL / laptop). Don't rely on self-report for
+which models — phase 2 measures it.
+
+**1 · Server + canary (a day).** `make init && make up && make status`; run
+the installer on *your own* machine only; confirm `/status` shows managed
+settings and your sessions appear on the dashboard within a minute. Run the
+edge-case tests above here.
+
+**2 · Monitor-only rollout (1–2 weeks).** Telemetry on everywhere, **no
+allowlist**:
+
+```bash
+sudo ./clients/claude-code/install-managed-settings.sh --monitor-only <server-ip> <team>
+```
+```powershell
+.\clients\claude-code\Install-ManagedSettings.ps1 -Collector <server-ip> -Team <team> -MonitorOnly
+```
+
+Announce the same day: what's collected (tokens, cost estimate, model,
+email — *not* prompts or code), where it lives, who can see it, why. Then
+let the **Tokens by model** and **Opus / Fable by user** panels build a
+baseline. That baseline is what tells you the right allowlist and how many
+grants to expect.
+
+**3 · Model policy (announce, enforce a week later).** Set `availableModels`
+in `managed-settings.json` from the evidence. Announce the policy and the
+request → grant flow with a date. For the few people the baseline shows as
+legitimate heavy Opus/Fable users, either give a standing long grant on day
+one (`claude-model-grant grant opus 720` = 30 days) or tell them the request
+path personally. On the date, re-run the installers **without** the flag —
+they merge, so it's a 30-second update per machine:
+
+```bash
+sudo ./clients/claude-code/install-managed-settings.sh <server-ip> <team>
+```
+
+Re-running **with** `--monitor-only` later removes the allowlist again, so
+switching modes is always a flag, never a hand edit.
+
+**4 · Steady state.** Grants via `make grant …`, expiring on their own; a
+weekly glance at the dashboard; the audit panel for anything odd.
+
 ## What about Claude chat and Cowork on the Windows PCs?
 
 Honest answer: **token usage there can't be captured this way.** OpenTelemetry
@@ -228,6 +298,8 @@ split the dashboard by machine (shared workstation vs. each Windows PC).
 | Collector receives, Prometheus empty | `make status` shows the `claude-code` target; `make restart svc=prometheus` if needed. |
 | Series but wrong names | Uncomment the `debug` exporter in `otel-collector.yml`, add it to the metrics pipeline, read raw names in the collector log. |
 | `/model` still shows everything | Managed file not being read (wrong path — `ProgramData` on Windows is the usual mistake), or the user is in a cloud session. |
+| Grant never expires (Linux/WSL) | cron not running — WSL is off by default: `sudo service cron start` (+ `systemctl enable cron` or `/etc/wsl.conf` `[boot] command`). The installer warns about this. |
+| `.ps1` "cannot be loaded" on Windows | Execution policy. `powershell -ExecutionPolicy Bypass -File <script> …` (this invocation only). |
 | Grant not visible | `/model` inside a NEW session; `claude-model-grant list` shows it active; drop-in dir is `managed-settings.d` next to the base file. |
 | User missing | No new session since install, or they use Claude Code on a machine without the managed file. |
 

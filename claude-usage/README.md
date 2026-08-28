@@ -19,14 +19,38 @@ inside `z620-a4000-srv`) and you get:
 Footprint ~400 MB RAM, negligible disk. Nothing here needs GPU, root, or the
 rest of the z620 stack.
 
+## Prerequisites
+
+| Where | Needs |
+|---|---|
+| **Server** (any Linux box) | Docker Engine + Compose v2 (`docker compose version`), `make`, ~400 MB RAM. Not root — your normal user in the `docker` group. |
+| **Linux / WSL clients** | `python3`, `sudo`, `cron` (for grant expiry — **WSL doesn't run cron by default**, see below), a recent Claude Code (`claude update`; `managed-settings.d/` and `availableModels` are newer features). |
+| **Windows clients** | An elevated PowerShell; run scripts with `-ExecutionPolicy Bypass` (see below). Recent Claude Code. |
+| **Network** | Clients must reach the server on TCP 4317. Grafana on 3000 for whoever views it. |
+
+## Deploy end-to-end (checklist)
+
+1. **Get the stack onto the server.** `git clone git@github.com:kurnoolion/z620-a4000-srv.git` and use its `claude-usage/` directory — or copy just that directory anywhere.
+2. **Bring it up** — see *Quick start (server side)* below. `make status` must show the `claude-code` target `up`.
+3. **Open the firewall** — `ufw allow … 4317` (clients) and `3000` (dashboard viewers), if a firewall is on.
+4. **Canary** — install managed settings on *your own* machine first (`--monitor-only`), start `claude`, run `/status` (managed settings listed), then check the dashboard: your email appears within a minute.
+5. **Roll out monitor-only** to every developer machine — *Quick start (each developer machine)* below. Announce what's collected the same day.
+6. **Let it run 1–2 weeks**, read the *Tokens by model* and *Opus / Fable by user* panels, decide the allowlist.
+7. **Enforce** — edit `availableModels` in `clients/claude-code/managed-settings.json` if needed, re-run the installers *without* the flag. Standing grants for known heavy users first.
+8. **Steady state** — `make grant …` on request; dashboard weekly.
+
+The guide's *Migrating existing users* section explains steps 4–7 in detail.
+
 ## Quick start (server side)
 
 ```bash
 cd claude-usage
-make init                  # creates .env (edit GRAFANA_PASSWORD) + data dirs, no sudo
+make init                  # creates .env + data dirs, no sudo
+$EDITOR .env               # at least GRAFANA_PASSWORD
 make up
 make status                # containers up, collector answering, Prometheus target UP
-sudo ufw allow from <LAN-CIDR> to any port 4317 proto tcp    # if a firewall is on
+sudo ufw allow from <LAN-CIDR> to any port 4317 proto tcp    # clients → collector   (if a firewall is on)
+sudo ufw allow from <LAN-CIDR> to any port 3000 proto tcp    # dashboard viewers
 ```
 
 Grafana: `http://<this-host>:3000/` → dashboard **APEX — Claude Code Usage**
@@ -35,22 +59,44 @@ login is only for editing (`GRAFANA_ANON_VIEW=false` in `.env` to require login)
 
 ## Quick start (each developer machine, once)
 
+The client machine needs the `clients/claude-code/` directory — clone the
+repo there, or `scp -r clients/claude-code user@machine:` from the server.
+
 ```bash
 # Linux / WSL (as root) — installs managed settings + the grant tool + expiry cron
 sudo ./clients/claude-code/install-managed-settings.sh <this-host-ip> <team-name>
 ```
 ```powershell
-# Windows (elevated PowerShell)
-.\clients\claude-code\Install-ManagedSettings.ps1 -Collector <this-host-ip> -Team <team-name>
+# Windows (elevated PowerShell). Default execution policy blocks .ps1 files;
+# Bypass applies to this invocation only.
+powershell -ExecutionPolicy Bypass -File .\clients\claude-code\Install-ManagedSettings.ps1 -Collector <this-host-ip> -Team <team-name>
 ```
 
-Use an **IP** unless you know the hostname resolves on every client. Users
-pick it up at their next `claude` start; the dashboard fills in within a minute.
+**WSL:** cron is not running by default, so grant expiry would never fire.
+The installer warns if it detects this; fix with `sudo service cron start`
+and, on Windows 11 / systemd-enabled WSL, `sudo systemctl enable cron`
+(or add `[boot] command="service cron start"` to `/etc/wsl.conf`).
+
+**Verify on each machine:** start `claude`, run `/status` — the managed
+settings file should be listed — then `/model` shows only allowed models
+(unless monitor-only). On the dashboard, the user's email appears within a
+minute of their first prompt.
+
+Add `--monitor-only` (Linux) / `-MonitorOnly` (Windows) to install telemetry
+**without** the model allowlist — the right first step when people are already
+using Claude Code (see the guide's "Migrating existing users"). Re-run without
+the flag later to enforce. Use an **IP** unless you know the hostname resolves
+on every client. Users pick it up at their next `claude` start; the dashboard
+fills in within a minute.
 
 ## Model grants
 
 Baseline allowlist: `clients/claude-code/managed-settings.json`
 (`availableModels`, default `["sonnet","haiku"]`). Case-by-case:
+
+`make grant`/`grants`/`revoke` reach Linux/WSL targets over ssh and run
+`sudo claude-model-grant` there — you need ssh access and sudo on the target
+(a password prompt is fine). Windows targets: run `Grant-Model.ps1` on the PC.
 
 ```bash
 make grant  host=alice@ws-01 models=opus hours=4     # Linux/WSL target over ssh
@@ -70,9 +116,27 @@ Set in `.env`:
 GRAFANA_ROOT_URL=https://<site-host>/grafana/
 GRAFANA_SUB_PATH=true
 ```
-and have the proxy forward `/grafana/*` to this host's `:3000` (the z620
-`Caddyfile` already does, via `host.docker.internal`). From the parent
-directory, `make usage-up` / `make usage-status` delegate here.
+and have the proxy forward `/grafana/*` to this host's `:3000`. On the z620
+specifically, after `git pull`:
+
+```bash
+make apply svc=caddy       # picks up the /grafana route + the host.docker.internal alias
+make usage-up              # = make -C claude-usage init up
+make usage-status
+```
+
+Then Grafana is at `https://<SITE_HOST>/grafana/` (also plain http). Port
+3000 need not be opened to the LAN in this case — only 4317.
+
+## Upkeep
+
+- **Upgrade images:** `docker compose pull && make up`.
+- **Data:** everything durable is under `DATA_ROOT` (default `./data`) — back
+  that up or move it; `make down` keeps it, `rm -rf data/` purges it.
+- **Change the allowlist:** edit `clients/claude-code/managed-settings.json`,
+  re-run the installer on each machine (it merges; grants are unaffected).
+- **Move the server:** only the clients' endpoint changes — re-run the
+  installers with the new IP.
 
 ## Files
 
