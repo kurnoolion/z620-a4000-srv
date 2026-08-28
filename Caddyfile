@@ -45,6 +45,15 @@
 	}
 }
 
+# Grafana (Claude Code usage dashboards) — prefix preserved; Grafana serves
+# from the /grafana sub-path (GF_SERVER_SERVE_FROM_SUB_PATH in compose.observability.yml).
+(grafana_route) {
+	redir /grafana /grafana/ 308
+	handle /grafana/* {
+		reverse_proxy grafana:3000
+	}
+}
+
 # HTTPS site — primary endpoint.
 {$SITE_HOST}{$SITE_ADDRESSES} {
 	tls {$TLS_MODE}
@@ -62,6 +71,7 @@
 
 	# TEI (embed + rerank) — see (tei_routes) snippet above.
 	import tei_routes
+	import grafana_route
 
 	# Status dashboard — static HTML.
 	redir /health-status /health-status/ 308
@@ -97,6 +107,7 @@
 		reverse_proxy ollama:11434
 	}
 	import tei_routes
+	import grafana_route
 
 	# Status dashboard — static HTML.
 	redir /health-status /health-status/ 308

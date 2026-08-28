@@ -29,10 +29,11 @@ A smaller sibling to `dgx-spark-srv`: same operator interface (`make up`,
 | **TEI reranker** | `text-embeddings-inference:cpu-1.5` | Reranking (default `bge-reranker-large`) — CPU |
 | **Caddy** | `caddy:2-alpine` | TLS gateway, hostname-only routing |
 
-**Not on this box** (intentionally): Postgres/Redis/Qdrant/MinIO, observability
-stack (Prom/Grafana). RAM budget on 24 GB doesn't justify them; this box is
-focused on inference and meant to be paired with backend services running
-elsewhere.
+| **OTel collector + Prometheus + Grafana** | `compose.observability.yml` | **Claude Code team usage ledger** (tokens / cost / sessions per developer) — see [CLAUDE-CODE-TELEMETRY.md](CLAUDE-CODE-TELEMETRY.md). ~400 MB RAM; no host/GPU exporters. |
+
+**Not on this box** (intentionally): Postgres/Redis/Qdrant/MinIO. RAM budget
+on 24 GB doesn't justify them; this box is focused on inference and meant to
+be paired with backend services running elsewhere.
 
 ## First-time deploy
 
@@ -62,6 +63,8 @@ make health
 | `/embed/*` | TEI :80 | TEI-native embeddings (`{"inputs":[...]}` → `[[floats]]`) |
 | `/rerank/*` | TEI reranker :80 | reranking (Cohere-compatible `/rerank`). **Also on plain HTTP** for the same reason. |
 | `/tei/*` | TEI :80 (prefix stripped) | OpenAI-compatible embeddings: `POST /tei/v1/embeddings` with `{"model","input":[...]}` → `{"data":[{"index","embedding"}]}`. The request's `model` value is ignored (TEI serves one model); the response echoes the served `--model-id` path. |
+
+| `/grafana/*` | Grafana :3000 | Claude Code usage dashboards. **Also on plain HTTP.** |
 
 Everything else: 404.
 
@@ -165,6 +168,9 @@ rebalancing, log tail, backups, and a symptom → fix troubleshooting table.
 
 - `compose.inference.yml` — vllm, ollama, tei (embed), tei-reranker
 - `compose.gateway.yml` + `Caddyfile` — reverse proxy / TLS
+- `compose.observability.yml` + `observability/` — OTel collector, Prometheus, Grafana (Claude Code usage)
+- `clients/claude-code/` — managed-settings + installers for developer machines (Linux/WSL/Windows), plus time-boxed model grants (`claude-model-grant`, `grant-model.sh`, `Grant-Model.ps1`)
+- `CLAUDE-CODE-TELEMETRY.md` — team token-usage monitoring: how it works, setup, model restrictions
 - `Makefile` — operator interface
 - `.env.example` — copy to `.env`, fill, `chmod 600`
 - `setup-storage.sh` — provision `/data/active` (SSD) + `/archive` (HDD)

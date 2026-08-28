@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+"""claude-model-grant — time-boxed model grants for Claude Code via managed-settings.d/.
+
+Installed to /usr/local/sbin by install-managed-settings.sh. Run as root.
+
+  claude-model-grant grant  opus[,fable] [HOURS]   allow extra model(s) on THIS machine (default 4h)
+  claude-model-grant revoke opus[,fable] | --all   remove grant(s) now
+  claude-model-grant list                          show active grants + expiry
+  claude-model-grant sweep                         remove expired grants (cron runs this every 5 min)
+
+How it works: the baseline allowlist lives in managed-settings.json. A grant is a
+drop-in  managed-settings.d/50-grant-<model>.json  whose `availableModels` is the
+baseline PLUS all currently granted models (drop-ins override the base file for a
+key, so each must carry the full list). Expiry is stored in a sidecar
+.expires file; `sweep` deletes both when due. Grants take effect at the user's
+next `claude` start and apply to EVERY user on this machine — see
+CLAUDE-CODE-TELEMETRY.md for the per-user caveat on shared workstations.
+"""
+import json, os, sys, time, glob, datetime as dt
+
+BASE_DIR = os.environ.get("CLAUDE_MANAGED_DIR", "/etc/claude-code")
+BASE = os.path.join(BASE_DIR, "managed-settings.json")
+DROP = os.path.join(BASE_DIR, "managed-settings.d")
+PREFIX = "50-grant-"
+
+def die(msg): print(f"error: {msg}", file=sys.stderr); sys.exit(1)
+
+def baseline():
+    try:
+        return list(json.load(open(BASE)).get("availableModels", []))
+    except FileNotFoundError:
+        die(f"{BASE} not found — run install-managed-settings.sh first")
+
+def grant_files():
+    return sorted(glob.glob(os.path.join(DROP, PREFIX + "*.json")))
+
+def model_of(path):
+    return os.path.basename(path)[len(PREFIX):-len(".json")]
+
+def expiry_of(path):
+    try:
+        return float(open(path + ".expires").read().strip())
+    except (FileNotFoundError, ValueError):
+        return None
+
+def active_models():
+    return [model_of(p) for p in grant_files()]
+
+def rewrite_all():
+    """Every drop-in must list baseline + ALL active grants (later file wins)."""
+    models = baseline() + [m for m in active_models() if m not in baseline()]
+    for p in grant_files():
+        json.dump({"availableModels": models, "enforceAvailableModels": True},
+                  open(p, "w"), indent=2); open(p, "a").write("\n")
+        os.chmod(p, 0o644)
+    return models
+
+def cmd_grant(args):
+    if not args: die("grant needs a model list, e.g. opus,fable")
+    models = [m.strip() for m in args[0].split(",") if m.strip()]
+    hours = float(args[1]) if len(args) > 1 else 4.0
+    os.makedirs(DROP, exist_ok=True)
+    exp = time.time() + hours * 3600
+    for m in models:
+        p = os.path.join(DROP, f"{PREFIX}{m}.json")
+        open(p, "w").write("{}")                 # placeholder; rewrite_all fills it
+        open(p + ".expires", "w").write(f"{exp:.0f}\n")
+    final = rewrite_all()
+    when = dt.datetime.fromtimestamp(exp).strftime("%Y-%m-%d %H:%M")
+    print(f"granted {', '.join(models)} until {when} ({hours:g}h)")
+    print(f"availableModels now: {final}")
+    print("takes effect at each user's next `claude` start")
+
+def cmd_revoke(args):
+    if not args: die("revoke needs a model list or --all")
+    targets = active_models() if args[0] == "--all" else [m.strip() for m in args[0].split(",")]
+    removed = []
+    for m in targets:
+        p = os.path.join(DROP, f"{PREFIX}{m}.json")
+        for f in (p, p + ".expires"):
+            if os.path.exists(f): os.remove(f)
+        if m in targets: removed.append(m)
+    final = rewrite_all()
+    print(f"revoked {', '.join(removed) or 'nothing'}")
+    print(f"availableModels now: {final}")
+
+def cmd_list(_):
+    print(f"baseline: {baseline()}")
+    if not grant_files(): print("no active grants"); return
+    now = time.time()
+    for p in grant_files():
+        e = expiry_of(p)
+        if e is None: status = "no expiry (manual revoke only)"
+        else:
+            left = e - now
+            status = ("EXPIRED — sweep pending" if left <= 0 else
+                      f"expires {dt.datetime.fromtimestamp(e):%Y-%m-%d %H:%M} ({left/3600:.1f}h left)")
+        print(f"  {model_of(p):<12} {status}")
+
+def cmd_sweep(_):
+    now = time.time(); swept = []
+    for p in grant_files():
+        e = expiry_of(p)
+        if e is not None and e <= now:
+            for f in (p, p + ".expires"):
+                if os.path.exists(f): os.remove(f)
+            swept.append(model_of(p))
+    if swept:
+        rewrite_all()
+        print(f"{dt.datetime.now():%F %T} expired: {', '.join(swept)}")
+
+def main():
+    if os.geteuid() != 0: die("run as root (sudo)")
+    cmds = {"grant": cmd_grant, "revoke": cmd_revoke, "list": cmd_list, "sweep": cmd_sweep}
+    if len(sys.argv) < 2 or sys.argv[1] not in cmds:
+        print(__doc__); sys.exit(1)
+    cmds[sys.argv[1]](sys.argv[2:])
+
+if __name__ == "__main__":
+    main()

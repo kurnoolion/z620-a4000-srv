@@ -1,0 +1,52 @@
+# OpenTelemetry Collector — receives Claude Code usage telemetry (OTLP) from
+# every developer machine on the LAN and re-publishes it as Prometheus metrics
+# on :8889, which prometheus.yml scrapes (job "claude-code").
+#
+# Metric names as they appear in Prometheus (add_metric_suffixes=false keeps
+# them exactly as Claude Code emits them, dots -> underscores):
+#   claude_code_token_usage     labels: user_email, model, type
+#                               (type = input | output | cacheRead | cacheCreation)
+#   claude_code_cost_usage      labels: user_email, model      (USD, list price)
+#   claude_code_session_count   labels: user_email
+#   claude_code_lines_of_code_count, claude_code_commit_count,
+#   claude_code_pull_request_count, claude_code_active_time_total
+# Every metric also carries session_id, organization_id, terminal_type and any
+# OTEL_RESOURCE_ATTRIBUTES set on the client (e.g. host_name, team).
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 10s
+  # Belt-and-braces: cap memory so a misbehaving client can't OOM the collector.
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    add_metric_suffixes: false            # keep claude_code_token_usage, not ..._tokens_total
+    resource_to_telemetry_conversion:
+      enabled: true                       # promote resource attrs (host.name, team, ...) to labels
+    metric_expiration: 10m                # drop series from finished sessions after 10 min
+  # Uncomment to eyeball what's arriving: `make logs svc=otel-collector`
+  # debug:
+  #   verbosity: basic
+
+service:
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus]
+    # Claude Code can also send per-request EVENTS (claude_code.api_request etc.)
+    # as OTLP logs. Prometheus can't store logs; add a Loki exporter here if you
+    # ever want per-prompt drill-down. Until then clients set OTEL_LOGS_EXPORTER=none.
