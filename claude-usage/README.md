@@ -23,7 +23,7 @@ rest of the z620 stack.
 
 | Where | Needs |
 |---|---|
-| **Server** (any Linux box) | Docker Engine + Compose v2 (`docker compose version`), `make`, ~400 MB RAM. Not root — your normal user in the `docker` group. |
+| **Server** (any Linux box) | Docker Engine + Compose v2 (`docker compose version`) **from Docker's apt repo or your distro — not the snap**: snap Docker is confined and cannot read `/srv`, `/opt`, etc. (symptom: `no configuration file provided: not found`, or `open /var/lib/snapd/void/...`). `make`, ~400 MB RAM. Not root — your normal user in the `docker` group. |
 | **Linux / WSL clients** | `python3`, `sudo`, `cron` (for grant expiry — **WSL doesn't run cron by default**, see below), a recent Claude Code (`claude update`; `managed-settings.d/` and `availableModels` are newer features). |
 | **Windows clients** | An elevated PowerShell; run scripts with `-ExecutionPolicy Bypass` (see below). Recent Claude Code. |
 | **Network** | Clients must reach the server on TCP 4317. Grafana on 3000 for whoever views it. |
