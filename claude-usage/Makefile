@@ -27,7 +27,7 @@ init:  ## Create data dirs (owned by you; containers run as your uid). Run once.
 	@echo "init: data dirs under $(DATA_ROOT) ready (uid $(PUID))"
 
 up:  ## Start collector + Prometheus + Grafana.
-	$(COMPOSE) up -d
+	@$(COMPOSE) up -d
 	@echo "Grafana: http://$$(hostname -I 2>/dev/null | awk '{print $$1}'):$${GRAFANA_PORT:-3000}/  (dashboard: /d/apex-claude-code-usage)"
 	@echo "Clients point at: http://<this-host>:$${OTLP_GRPC_PORT:-4317}  → clients/claude-code/install-managed-settings.sh"
 

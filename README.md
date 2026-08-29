@@ -168,7 +168,7 @@ rebalancing, log tail, backups, and a symptom → fix troubleshooting table.
 
 - `compose.inference.yml` — vllm, ollama, tei (embed), tei-reranker
 - `compose.gateway.yml` + `Caddyfile` — reverse proxy / TLS
-- `claude-usage/` — **standalone** Claude Code usage observability + model grants (own `docker-compose.yml`, `Makefile`, `.env`, `clients/`, docs). `make usage-up` here, or copy the directory to any Docker host.
+- `claude-usage/` — **standalone** Claude Code usage observability + model grants (own `compose.yaml`, `Makefile`, `.env`, `clients/`, docs). `make usage-up` here, or copy the directory to any Docker host.
 - `Makefile` — operator interface
 - `.env.example` — copy to `.env`, fill, `chmod 600`
 - `setup-storage.sh` — provision `/data/active` (SSD) + `/archive` (HDD)

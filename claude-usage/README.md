@@ -140,7 +140,7 @@ Then Grafana is at `https://<SITE_HOST>/grafana/` (also plain http). Port
 
 ## Files
 
-- `docker-compose.yml`, `.env.example`, `Makefile` — the stack
+- `compose.yaml`, `.env.example`, `Makefile` — the stack
 - `observability/` — collector config, Prometheus scrape config, Grafana provisioning + dashboard
 - `clients/claude-code/` — `managed-settings.json` template; installers for Linux/WSL (`.sh`) and Windows (`.ps1`); grant tooling (`claude-model-grant`, `grant-model.sh`, `Grant-Model.ps1`)
 - `CLAUDE-CODE-TELEMETRY.md` — the full guide: how it works, what's captured, what isn't (chat/Cowork), model control, caveats, troubleshooting
