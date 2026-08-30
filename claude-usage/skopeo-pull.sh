@@ -8,11 +8,14 @@
 #   ./skopeo-pull.sh grafana/grafana:12.0.2   # explicit list
 #   KEEP_TARS=1 ./skopeo-pull.sh     # keep tarballs in $TMP (sneakernet to another box)
 #
-# Env: TMP (default /tmp), KEEP_TARS (0), MAX_RETRIES (3), LOG (~/claude-usage-pull.log)
+# Env: TMP (default ~/.cache/claude-usage-images — NOT /tmp: snap Docker cannot
+#      read the host /tmp), KEEP_TARS (0), MAX_RETRIES (3), LOG (~/claude-usage-pull.log)
+# A tarball left behind by an earlier run (failed load, Ctrl-C after copy) is
+# reused instead of re-downloaded; tarballs are deleted only after a successful load.
 set -uo pipefail
 cd "$(dirname "$0")"
 
-TMP="${TMP:-/tmp}"; KEEP_TARS="${KEEP_TARS:-0}"; MAX_RETRIES="${MAX_RETRIES:-3}"
+TMP="${TMP:-$HOME/.cache/claude-usage-images}"; mkdir -p "$TMP"; KEEP_TARS="${KEEP_TARS:-0}"; MAX_RETRIES="${MAX_RETRIES:-3}"
 LOG="${LOG:-$HOME/claude-usage-pull.log}"
 log() { printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$LOG"; }
 
@@ -35,15 +38,20 @@ failed=()
 for img in "${IMAGES[@]}"; do
   if docker image inspect "$img" >/dev/null 2>&1; then log "skip  $img (present)"; continue; fi
   tar="$TMP/$(tr '/:' '__' <<<"$img").tar"; ok=0
-  for ((a=1; a<=MAX_RETRIES; a++)); do
+  if [[ -s "$tar" ]]; then log "reuse $tar (from an earlier run)"; ok=1; fi
+  for ((a=1; a<=MAX_RETRIES && ok==0; a++)); do
     log "pull  $img (try $a/$MAX_RETRIES)"
     if skopeo copy --override-os linux --override-arch amd64 \
          "docker://$(to_src "$img")" "docker-archive:$tar:$img" 2>&1 | tee -a "$LOG"; then ok=1; break; fi
     sleep $((a*5))
   done
   if (( ok )); then
-    log "load  $img"; docker load -i "$tar" 2>&1 | tee -a "$LOG" || failed+=("$img")
-    (( KEEP_TARS )) || rm -f "$tar"
+    log "load  $img"
+    if docker load -i "$tar" 2>&1 | tee -a "$LOG" && docker image inspect "$img" >/dev/null 2>&1; then
+      (( KEEP_TARS )) || rm -f "$tar"
+    else
+      log "load FAILED — tarball kept at $tar"; failed+=("$img")
+    fi
   else failed+=("$img"); fi
 done
 

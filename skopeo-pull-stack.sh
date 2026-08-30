@@ -43,7 +43,7 @@ for img in "${IMAGES[@]}"; do
 
   # Sanitize for filename. Tar suffix matters so `docker load` preserves the name.
   safe=$(echo "$img" | tr '/:' '__')
-  tar="/tmp/${safe}.tar"
+  tar="${TMP:-$HOME/.cache/z620-images}/${safe}.tar"; mkdir -p "$(dirname "$tar")"
 
   CREDS_ARG=()
   case "$img" in
