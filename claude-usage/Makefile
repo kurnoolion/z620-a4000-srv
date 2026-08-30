@@ -1,5 +1,6 @@
 # claude-usage — operator interface.
 #   make init        create data dirs (no sudo)
+#   make pull        skopeo-pull images when docker pull is blocked by the proxy
 #   make up / down   start / stop the stack
 #   make status      is everything up and receiving?
 #   make grant host=alice@ws-01 models=opus hours=4    (also: revoke, grants)
@@ -16,7 +17,7 @@ export PGID ?= $(shell id -g)
 DATA_ROOT ?= ./data
 COMPOSE := docker compose
 
-.PHONY: help init up down restart logs ps status grant revoke grants
+.PHONY: help init pull up down restart logs ps status grant revoke grants
 
 help:  ## Show this help.
 	@awk 'BEGIN{FS=":.*##"; printf "Targets:\n"} /^[a-zA-Z_-]+:.*##/ {printf "  \033[36m%-12s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -25,6 +26,9 @@ init:  ## Create data dirs (owned by you; containers run as your uid). Run once.
 	@test -f .env || { cp .env.example .env; echo "created .env from .env.example — edit GRAFANA_PASSWORD"; }
 	@mkdir -p $(DATA_ROOT)/prometheus $(DATA_ROOT)/grafana
 	@echo "init: data dirs under $(DATA_ROOT) ready (uid $(PUID))"
+
+pull:  ## Pull images via skopeo + docker load (corp proxy blocks docker pull).
+	./skopeo-pull.sh
 
 up:  ## Start collector + Prometheus + Grafana.
 	@$(COMPOSE) up -d

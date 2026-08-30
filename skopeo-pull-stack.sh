@@ -10,7 +10,7 @@ KEEP_TARS="${KEEP_TARS:-0}"
 
 # Discover images from compose files (one per line, dedup).
 IMAGES_FROM_COMPOSE=$(
-  grep -hE '^\s*image:' compose.inference.yml compose.gateway.yml 2>/dev/null \
+  grep -hE '^\s*image:' compose.inference.yml compose.gateway.yml claude-usage/compose.yaml 2>/dev/null \
     | sed -E 's/^\s*image:\s*//; s/[[:space:]]*$//; s/^"//; s/"$//' \
     | envsubst \
     | sort -u

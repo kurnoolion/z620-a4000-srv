@@ -22,7 +22,7 @@ services:
           memory: 384m
 
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.5.0
     container_name: claude-usage-prometheus
     restart: unless-stopped
     # Runs as the invoking user so the bind-mounted data dir needs no chown/sudo.
@@ -40,7 +40,7 @@ services:
           memory: 512m
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:12.0.2
     container_name: claude-usage-grafana
     restart: unless-stopped
     user: "${PUID:-1000}:${PGID:-1000}"

@@ -47,6 +47,7 @@ The guide's *Migrating existing users* section explains steps 4–7 in detail.
 cd claude-usage
 make init                  # creates .env + data dirs, no sudo
 $EDITOR .env               # at least GRAFANA_PASSWORD
+make pull                  # only if `docker pull` is blocked by the corp proxy (skopeo + docker load)
 make up
 make status                # containers up, collector answering, Prometheus target UP
 sudo ufw allow from <LAN-CIDR> to any port 4317 proto tcp    # clients → collector   (if a firewall is on)
@@ -141,6 +142,7 @@ Then Grafana is at `https://<SITE_HOST>/grafana/` (also plain http). Port
 ## Files
 
 - `compose.yaml`, `.env.example`, `Makefile` — the stack
+- `skopeo-pull.sh` — `make pull`: fetch the three images through skopeo when Docker Hub is unreachable for the daemon (corp proxy). Pinned tags; `KEEP_TARS=1` keeps the tarballs for sneakernet to an offline box (`docker load -i`).
 - `observability/` — collector config, Prometheus scrape config, Grafana provisioning + dashboard
 - `clients/claude-code/` — `managed-settings.json` template; installers for Linux/WSL (`.sh`) and Windows (`.ps1`); grant tooling (`claude-model-grant`, `grant-model.sh`, `Grant-Model.ps1`)
 - `CLAUDE-CODE-TELEMETRY.md` — the full guide: how it works, what's captured, what isn't (chat/Cowork), model control, caveats, troubleshooting
