@@ -8,14 +8,15 @@
 #   ./skopeo-pull.sh grafana/grafana:12.0.2   # explicit list
 #   KEEP_TARS=1 ./skopeo-pull.sh     # keep tarballs in $TMP (sneakernet to another box)
 #
-# Env: TMP (default ~/.cache/claude-usage-images — NOT /tmp: snap Docker cannot
-#      read the host /tmp), KEEP_TARS (0), MAX_RETRIES (3), LOG (~/claude-usage-pull.log)
+# Env: TMP (default ./data/images), KEEP_TARS (0), MAX_RETRIES (3), LOG (~/claude-usage-pull.log)
+# Tarballs are fed to `docker load` on stdin, so a snap-confined docker CLI
+# (which cannot open /tmp or hidden dirs like ~/.cache) still works.
 # A tarball left behind by an earlier run (failed load, Ctrl-C after copy) is
 # reused instead of re-downloaded; tarballs are deleted only after a successful load.
 set -uo pipefail
 cd "$(dirname "$0")"
 
-TMP="${TMP:-$HOME/.cache/claude-usage-images}"; mkdir -p "$TMP"; KEEP_TARS="${KEEP_TARS:-0}"; MAX_RETRIES="${MAX_RETRIES:-3}"
+TMP="${TMP:-$PWD/data/images}"; mkdir -p "$TMP"; KEEP_TARS="${KEEP_TARS:-0}"; MAX_RETRIES="${MAX_RETRIES:-3}"
 LOG="${LOG:-$HOME/claude-usage-pull.log}"
 log() { printf '[%s] %s\n' "$(date -u +%FT%TZ)" "$*" | tee -a "$LOG"; }
 
@@ -47,7 +48,7 @@ for img in "${IMAGES[@]}"; do
   done
   if (( ok )); then
     log "load  $img"
-    if docker load -i "$tar" 2>&1 | tee -a "$LOG" && docker image inspect "$img" >/dev/null 2>&1; then
+    if docker load < "$tar" 2>&1 | tee -a "$LOG" && docker image inspect "$img" >/dev/null 2>&1; then
       (( KEEP_TARS )) || rm -f "$tar"
     else
       log "load FAILED — tarball kept at $tar"; failed+=("$img")

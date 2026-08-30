@@ -43,7 +43,7 @@ for img in "${IMAGES[@]}"; do
 
   # Sanitize for filename. Tar suffix matters so `docker load` preserves the name.
   safe=$(echo "$img" | tr '/:' '__')
-  tar="${TMP:-$HOME/.cache/z620-images}/${safe}.tar"; mkdir -p "$(dirname "$tar")"
+  tar="${TMP:-$PWD/images}/${safe}.tar"; mkdir -p "$(dirname "$tar")"
 
   CREDS_ARG=()
   case "$img" in
@@ -63,7 +63,7 @@ for img in "${IMAGES[@]}"; do
 
   if [ "$ok" -eq 1 ]; then
     echo "[load] $img" | tee -a "$LOG"
-    docker load -i "$tar" 2>&1 | tee -a "$LOG"
+    docker load < "$tar" 2>&1 | tee -a "$LOG"
     [ "$KEEP_TARS" = "0" ] && rm -f "$tar"
   else
     echo "ERROR: pull failed for $img" | tee -a "$LOG"
