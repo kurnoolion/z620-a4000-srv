@@ -21,7 +21,7 @@ if [ -f .env ]; then
 fi
 
 sec "Containers"
-for c in vllm ollama tei tei-reranker caddy; do
+for c in vllm tei tei-reranker caddy; do
   state=$(docker inspect -f '{{.State.Status}}' "$c" 2>/dev/null || echo "missing")
   if [ "$state" = "running" ]; then pass "$c: running"
   elif [ "$state" = "missing" ]; then fail "$c: container missing"
@@ -61,7 +61,6 @@ probe() {
 probe "vLLM /v1/models" "https://$host/v1/models"
 probe "TEI /embed health" "https://$host/embed/health"
 probe "TEI /rerank health" "https://$host/rerank/health"
-probe "Ollama /ollama/api/tags" "https://$host/ollama/api/tags"
 
 sec "Disk"
 for mnt in / /data/active /archive; do

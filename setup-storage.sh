@@ -11,7 +11,7 @@
 #   1. Creates dir /data/active (on SSD, just under /) with subdirs.
 #   2. mkfs.ext4 on the chosen HDD device (CONFIRMS FIRST), labels it ARCHIVE,
 #      adds an fstab entry by LABEL, and mounts at /archive.
-#   3. Creates /archive subtree (models/{hf-cache,local,ollama}, backups).
+#   3. Creates /archive subtree (models/{hf-cache,local}, backups).
 #   4. Chowns everything to the current user.
 #
 # What it does NOT do:
@@ -111,7 +111,7 @@ fi
 
 # ---- 3. Archive subtree --------------------------------------------------
 say "step 3/3: create archive subtree under $ARCHIVE_ROOT"
-do_cmd "sudo mkdir -p $ARCHIVE_ROOT/models/{hf-cache,local,ollama}"
+do_cmd "sudo mkdir -p $ARCHIVE_ROOT/models/{hf-cache,local}"
 do_cmd "sudo mkdir -p $ARCHIVE_ROOT/backups"
 do_cmd "sudo chown -R $(id -u):$(id -g) $ARCHIVE_ROOT"
 

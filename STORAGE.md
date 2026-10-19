@@ -29,8 +29,7 @@ own LV later if needed.
 /archive                   (HDD, 1 TB, LABEL=ARCHIVE)
 ├── models/
 │   ├── hf-cache/          HuggingFace cache (huggingface-hub default layout)
-│   ├── local/             Flat-dir model snapshots (vLLM loads directly)
-│   └── ollama/            Ollama blob store (mounted as /root/.ollama)
+│   └── local/             Flat-dir model snapshots (vLLM loads directly)
 └── backups/
     └── staging/<ts>/      Local backup snapshots (restic pushes off-box if configured)
 ```
@@ -41,7 +40,6 @@ own LV later if needed.
 |---|---|---|
 | vLLM | model | resolver checks `$ACTIVE_ROOT/models/local/<name>` → `$ARCHIVE_ROOT/models/local/<name>` → HF cache |
 | vLLM | HF cache (only for repo-id form) | `/archive/models/hf-cache` |
-| Ollama | blobs + manifests | `/archive/models/ollama` |
 | TEI (embed + reranker) | HF cache for the model | `/archive/models/hf-cache` |
 | Caddy | TLS state, config | named volumes `caddy-data`, `caddy-config` (on `/`) |
 | Backups | snapshots | `/archive/backups/staging/<ts>/` |
@@ -81,7 +79,7 @@ vLLM model — switch back to HDD when rotating to a different one.
 | Consumer | Typical | Cap reasoning |
 |---|---|---|
 | Ubuntu + tools | ~15 GB | normal |
-| `/var/lib/docker` images | ~30-50 GB | vLLM image ~10 GB, Ollama ~2 GB, TEI ~2 GB, Caddy ~50 MB, plus base layers |
+| `/var/lib/docker` images | ~25-40 GB | vLLM image ~10 GB, TEI ~2 GB, Caddy ~50 MB, plus base layers |
 | Docker volumes (caddy + tmp) | ~1 GB | small |
 | `/data/active/models/local` | up to 50 GB | hold 1-2 promoted models |
 | Swap | 16 GB | overflow |
@@ -96,7 +94,6 @@ weekly via cron.
 |---|---|---|
 | `/archive/models/hf-cache` | 200-400 GB | bge-m3 + reranker + a few LLMs at full precision adds up |
 | `/archive/models/local` | 50-200 GB | each AWQ snapshot is 5-10 GB |
-| `/archive/models/ollama` | 50-200 GB | each GGUF is 2-8 GB |
 | `/archive/backups` | 10-100 GB | mostly restic snapshots if configured |
 | Free | ~300+ GB | room to grow |
 
@@ -108,15 +105,11 @@ If `/archive` starts to fill, see the cleanup table below.
 # Disk usage by model.
 du -sh /archive/models/hf-cache/* | sort -h | tail
 du -sh /archive/models/local/*    | sort -h
-du -sh /archive/models/ollama/blobs 2>/dev/null
 
 # Remove a specific HF-cached model (canonical via huggingface-cli).
 hf cache delete --repo Qwen/Qwen2.5-14B-Instruct-AWQ
 # (or nuke a flat-dir snapshot)
 rm -rf /archive/models/local/Qwen2.5-14B-Instruct-AWQ
-
-# Remove an Ollama model.
-docker exec ollama ollama rm llama3:70b
 
 # Trim old backup snapshots (if NOT using restic — restic does this via
 # `forget` automatically).

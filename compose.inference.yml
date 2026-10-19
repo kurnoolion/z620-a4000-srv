@@ -1,13 +1,12 @@
-# vLLM + Ollama + TEI (embed) + TEI (reranker) on RTX A4000 (16 GB).
+# vLLM + TEI (embed) + TEI (reranker) on RTX A4000 (16 GB).
 #
 # GPU memory split (default):
-#   vLLM (GPU)         ~10.4 GB  ← VLLM_GPU_UTIL=0.65 of 16 GB
-#   Ollama (GPU)        ~5.6 GB  ← whatever vLLM leaves, OLLAMA_MAX_LOADED_MODELS=1
+#   vLLM (GPU)         ~14.4 GB  ← VLLM_GPU_UTIL=0.90 of 16 GB
 #   TEI embed (CPU)         ~0
 #   TEI reranker (CPU)      ~0
 #
-# vLLM starts FIRST and we wait for its /health before launching Ollama,
-# so Ollama can't grab memory vLLM needs to pre-allocate.
+# vLLM owns the GPU: pre-allocates its slice at startup. TEI is CPU-only
+# and depends on nothing GPU-side.
 
 x-gpu-reservation: &gpu
   deploy:
@@ -29,6 +28,7 @@ services:
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN}
       HF_HOME: /hf-cache
       VLLM_REASONING_PARSER: ${VLLM_REASONING_PARSER}
+      VLLM_ROPE_SCALING: ${VLLM_ROPE_SCALING}
     volumes:
       - ${ARCHIVE_ROOT}/models/hf-cache:/hf-cache
       - ${ARCHIVE_ROOT}/models/local:/archive-models:ro
@@ -56,6 +56,8 @@ services:
         echo "vllm: serving $$MODEL as '$$NAME'"
         PARSER_FLAG=""
         [ -n "$$VLLM_REASONING_PARSER" ] && PARSER_FLAG="--reasoning-parser $$VLLM_REASONING_PARSER --enable-reasoning"
+        ROPE_FLAG=""
+        [ -n "$$VLLM_ROPE_SCALING" ] && ROPE_FLAG="--rope-scaling $$VLLM_ROPE_SCALING"
         exec python3 -m vllm.entrypoints.openai.api_server \
           --host 0.0.0.0 --port 8000 \
           --model "$$MODEL" \
@@ -63,7 +65,7 @@ services:
           --gpu-memory-utilization ${VLLM_GPU_UTIL:-0.65} \
           --max-model-len ${VLLM_MAX_MODEL_LEN:-8192} \
           --disable-log-requests \
-          $$PARSER_FLAG
+          $$PARSER_FLAG $$ROPE_FLAG
     healthcheck:
       test: ["CMD-SHELL", "python3 -c 'import urllib.request,sys; sys.exit(0 if urllib.request.urlopen(\"http://localhost:8000/health\", timeout=2).status==200 else 1)'"]
       interval: 30s
@@ -72,33 +74,6 @@ services:
       start_period: 300s
     shm_size: "4gb"
     ipc: host
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-    networks: [apex]
-    <<: *gpu
-    depends_on:
-      vllm:
-        condition: service_healthy
-    environment:
-      OLLAMA_MAX_LOADED_MODELS: ${OLLAMA_MAX_LOADED_MODELS:-1}
-      OLLAMA_KEEP_ALIVE: "30m"
-      OLLAMA_HOST: "0.0.0.0:11434"
-    # Direct port for the Ollama CLI (OLLAMA_HOST=http://<box>:11434).
-    # The CLI hits /api/* at the root and doesn't know about Caddy's /ollama
-    # prefix, so it has to talk to ollama directly. Box is VPN-only, no auth.
-    ports:
-      - "11434:11434"
-    volumes:
-      - ${ARCHIVE_ROOT}/models/ollama:/root/.ollama
-    healthcheck:
-      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
 
   tei:
     image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.5}

@@ -204,7 +204,7 @@ make pull-stack
 ```bash
 make up
 # vLLM starts FIRST. The Makefile waits up to 5 min for /health
-# before launching Ollama / TEI / Caddy — don't interrupt this.
+# before launching TEI / Caddy — don't interrupt this.
 
 make ps         # all containers should be 'Up (healthy)'
 make health     # PASS/WARN/FAIL summary
@@ -236,11 +236,6 @@ curl -s https://z620-a4000.local/rerank/rerank \
   -H 'Content-Type: application/json' \
   -d '{"query":"cellular network","texts":["5G NR","cookies","CDMA"]}' \
   | jq
-
-# Ollama: list models + pull a small one.
-curl -s https://z620-a4000.local/ollama/api/tags | jq
-curl -s -X POST https://z620-a4000.local/ollama/api/pull \
-  -d '{"name":"llama3.2:3b"}'
 ```
 
 If `curl` errors with `tlsv1 alert internal error`, you're using an IP in the
@@ -270,7 +265,7 @@ make backup       # first run will `restic init` if repo is empty
 ## Done
 
 Stack should now be:
-- Serving on `https://z620-a4000.local/{v1,ollama,embed,rerank}/*`.
+- Serving on `https://z620-a4000.local/{v1,embed,rerank}/*`.
 - Self-monitoring via cron `health.sh`.
 - Reproducible from this directory (config + scripts are all here).
 

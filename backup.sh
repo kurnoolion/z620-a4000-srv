@@ -4,8 +4,7 @@
 # Stages:
 #   1. Snapshot $PWD config (compose, Caddyfile, .env.example, scripts).
 #   2. Snapshot Caddy state (caddy-data, caddy-config volumes).
-#   3. List installed Ollama models (not the blobs — those are reproducible).
-#   4. If RESTIC_REPO + RESTIC_PASSWORD are set, push to that repo with retention.
+#   3. If RESTIC_REPO + RESTIC_PASSWORD are set, push to that repo with retention.
 #      Otherwise stage locally under $ARCHIVE_ROOT/backups and WARN.
 #
 # Models are NOT backed up — they're reproducible from HuggingFace.
@@ -38,11 +37,6 @@ docker run --rm \
   -v "$SNAP":/snap alpine \
   tar -czf /snap/caddy-state.tgz -C / data config 2>/dev/null || \
   echo "[backup] WARN: caddy volume snapshot failed (volumes may not exist yet)"
-
-# 3. Ollama models inventory (just the list, not the blobs).
-echo "[+] ollama inventory"
-docker exec ollama ollama list > "$SNAP/ollama-models.txt" 2>/dev/null || \
-  echo "(ollama not running or no models)" > "$SNAP/ollama-models.txt"
 
 # Manifest.
 {

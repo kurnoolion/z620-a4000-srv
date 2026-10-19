@@ -68,11 +68,6 @@
 		reverse_proxy vllm:8000
 	}
 
-	# Ollama API
-	handle_path /ollama/* {
-		reverse_proxy ollama:11434
-	}
-
 	# TEI (embed + rerank) — see (tei_routes) snippet above.
 	import tei_routes
 	import grafana_route
@@ -95,20 +90,16 @@
 	}
 }
 
-# Plain HTTP for cert-averse clients (Ollama CLI, scripts that can't pin a
-# self-signed CA). `:80` matches ANY Host header on port 80 — so clients can
-# reach these routes by hostname, IP, or localhost without TLS or Host-header
-# fiddling. Same routing semantics as the HTTPS block:
-#   - `handle` preserves the prefix (vLLM /v1; TEI bare /embed, /rerank).
-#   - `handle_path` strips the prefix (Ollama API is at /api/*).
+# Plain HTTP for cert-averse clients (scripts that can't pin a self-signed CA).
+# `:80` matches ANY Host header on port 80 — so clients can reach these routes
+# by hostname, IP, or localhost without TLS or Host-header fiddling. Same
+# routing semantics as the HTTPS block: `handle` preserves the prefix
+# (vLLM /v1; TEI bare /embed, /rerank).
 # Unmatched paths 404 (NOT a redirect to HTTPS — for IP-Host clients the
 # HTTPS redirect would just fail at the TLS handshake; better to 404 cleanly).
 :80 {
 	handle /v1/* {
 		reverse_proxy vllm:8000
-	}
-	handle_path /ollama/* {
-		reverse_proxy ollama:11434
 	}
 	import tei_routes
 	import grafana_route

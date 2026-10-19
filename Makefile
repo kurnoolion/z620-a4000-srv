@@ -15,7 +15,6 @@ COMPOSE_FILES := -f compose.inference.yml -f compose.gateway.yml
 COMPOSE := docker compose $(COMPOSE_FILES)
 
 .PHONY: help init up down restart apply logs ps health \
-        vllm-start vllm-stop rebalance \
         download-models pull-stack \
         install-system prune prune-status backup usage-up usage-down usage-status
 
@@ -25,11 +24,11 @@ help:  ## Show this help.
 init:  ## Create docker network + storage roots. Run once.
 	@docker network inspect apex >/dev/null 2>&1 || docker network create apex
 	@mkdir -p $${ACTIVE_ROOT:-/data/active}/models/local
-	@mkdir -p $${ARCHIVE_ROOT:-/archive}/models/{hf-cache,local,ollama}
+	@mkdir -p $${ARCHIVE_ROOT:-/archive}/models/{hf-cache,local}
 	@mkdir -p $${ARCHIVE_ROOT:-/archive}/backups
 	@echo "init: network 'apex' ready; storage roots created."
 
-up:  ## Bring up the stack (vLLM first, then Ollama + TEI + gateway).
+up:  ## Bring up the stack (vLLM, then TEI + gateway).
 	$(COMPOSE) up -d vllm
 	@echo "Waiting for vLLM /health (up to 5 min for first cold load)..."
 	@for i in $$(seq 1 60); do \
@@ -42,11 +41,11 @@ down:  ## Stop everything (containers + network state).
 	$(COMPOSE) down
 
 restart:  ## Restart one service (does NOT apply .env/compose changes): `make restart svc=vllm`
-	@test -n "$(svc)" || { echo "usage: make restart svc=<vllm|ollama|tei|tei-reranker|caddy>"; exit 1; }
+	@test -n "$(svc)" || { echo "usage: make restart svc=<vllm|tei|tei-reranker|caddy>"; exit 1; }
 	$(COMPOSE) restart $(svc)
 
 apply:  ## Recreate a service so .env/compose/Caddyfile changes take effect: `make apply svc=vllm`
-	@test -n "$(svc)" || { echo "usage: make apply svc=<vllm|ollama|tei|tei-reranker|caddy>"; exit 1; }
+	@test -n "$(svc)" || { echo "usage: make apply svc=<vllm|tei|tei-reranker|caddy>"; exit 1; }
 	$(COMPOSE) up -d --force-recreate $(svc)
 
 logs:  ## Tail logs. `make logs svc=vllm` or omit svc for all.
@@ -57,18 +56,6 @@ ps:  ## List stack containers.
 
 health:  ## Run health.sh (PASS/WARN/FAIL probes; non-zero on FAIL).
 	@./health.sh
-
-vllm-start:  ## Start vLLM only (reclaims VLLM_GPU_UTIL slice).
-	$(COMPOSE) up -d vllm
-
-vllm-stop:  ## Stop vLLM only (frees full 16 GB VRAM for Ollama).
-	$(COMPOSE) stop vllm
-
-rebalance:  ## Change vLLM/Ollama VRAM split: `make rebalance util=0.55`
-	@test -n "$(util)" || { echo "usage: make rebalance util=<0.30..0.85>"; exit 1; }
-	@grep -q '^VLLM_GPU_UTIL=' .env && sed -i "s|^VLLM_GPU_UTIL=.*|VLLM_GPU_UTIL=$(util)|" .env || echo "VLLM_GPU_UTIL=$(util)" >> .env
-	$(COMPOSE) up -d --force-recreate vllm
-	@echo "vLLM restarted with VLLM_GPU_UTIL=$(util)"
 
 download-models:  ## Pre-download VLLM_MODEL + TEI_MODEL via hf CLI.
 	@./download-models.sh
