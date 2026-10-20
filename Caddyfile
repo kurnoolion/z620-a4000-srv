@@ -68,6 +68,11 @@
 		reverse_proxy vllm:8000
 	}
 
+	# vLLM Prometheus metrics (served at /metrics on vllm:8000).
+	handle /metrics {
+		reverse_proxy vllm:8000
+	}
+
 	# TEI (embed + rerank) — see (tei_routes) snippet above.
 	import tei_routes
 	import grafana_route
@@ -99,6 +104,9 @@
 # HTTPS redirect would just fail at the TLS handshake; better to 404 cleanly).
 :80 {
 	handle /v1/* {
+		reverse_proxy vllm:8000
+	}
+	handle /metrics {
 		reverse_proxy vllm:8000
 	}
 	import tei_routes

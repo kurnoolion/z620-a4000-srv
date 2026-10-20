@@ -58,6 +58,7 @@ make health
 | Path | Backend | Use |
 |---|---|---|
 | `/v1/*` | vLLM :8000 | OpenAI-compatible chat / completions. **Also on plain HTTP** so cert-averse clients (nora/hilda RAG pipelines) can skip TLS. |
+| `/metrics` | vLLM :8000 | Prometheus-format vLLM metrics (request latency, tokens/s, queue depth, KV-cache hit rate, …). **Also on plain HTTP** for in-cluster Prom scrapes. |
 | `/embed/*` | TEI :80 | TEI-native embeddings (`{"inputs":[...]}` → `[[floats]]`) |
 | `/rerank/*` | TEI reranker :80 | reranking (Cohere-compatible `/rerank`). **Also on plain HTTP** for the same reason. |
 | `/tei/*` | TEI :80 (prefix stripped) | OpenAI-compatible embeddings: `POST /tei/v1/embeddings` with `{"model","input":[...]}` → `{"data":[{"index","embedding"}]}`. The request's `model` value is ignored (TEI serves one model); the response echoes the served `--model-id` path. |
