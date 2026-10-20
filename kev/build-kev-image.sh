@@ -33,19 +33,49 @@ if [ -n "$BASE_IMAGE" ]; then
   ../skopeo-pull-stack.sh "$BASE_IMAGE"
 fi
 
+# `uv sync` and `snapshot_download` inside the build container need the corp
+# proxy. `sudo` normally strips http_proxy / https_proxy; recover from
+# /etc/environment if the current shell doesn't have them.
+if [ -z "${http_proxy:-}${HTTP_PROXY:-}${https_proxy:-}${HTTPS_PROXY:-}" ] \
+   && [ -r /etc/environment ]; then
+  for var in http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY; do
+    val=$(grep -E "^${var}=" /etc/environment 2>/dev/null | tail -1 \
+          | sed -e "s/^${var}=//" -e 's/^"//' -e 's/"$//')
+    [ -n "$val" ] && export "${var}=${val}"
+  done
+fi
+
+BUILD_ARGS=(
+  --tag "$IMAGE"
+  --build-arg KEV_REF="$KEV_REF"
+  --build-arg KEV_MODEL="$KEV_MODEL"
+  --build-arg BASE_MODEL="$BASE_MODEL"
+  --build-arg BASE_REVISION="$BASE_REVISION"
+)
+# Propagate proxy to the build container (uv, pip, huggingface_hub honor these).
+# HTTP_PROXY/HTTPS_PROXY/NO_PROXY (and lowercase) are *pre-defined* build-args
+# in Docker — their values do NOT persist in the final image's history, so a
+# proxy URL with userinfo is safe to pass here.
+PROXY_SET=0
+for var in http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY; do
+  if [ -n "${!var:-}" ]; then
+    BUILD_ARGS+=(--build-arg "${var}=${!var}")
+    PROXY_SET=1
+  fi
+done
+if [ "$PROXY_SET" = "1" ]; then
+  echo "[+] proxy env detected; propagating to docker build"
+else
+  echo "[+] no proxy env detected; building without --build-arg proxy"
+fi
+
 echo "==> Building $IMAGE"
 echo "    KEV_REF=$KEV_REF"
 echo "    KEV_MODEL=$KEV_MODEL"
 echo "    BASE=$BASE_MODEL @ $BASE_REVISION"
 echo
 
-docker build \
-  --tag "$IMAGE" \
-  --build-arg KEV_REF="$KEV_REF" \
-  --build-arg KEV_MODEL="$KEV_MODEL" \
-  --build-arg BASE_MODEL="$BASE_MODEL" \
-  --build-arg BASE_REVISION="$BASE_REVISION" \
-  .
+docker build "${BUILD_ARGS[@]}" .
 
 echo
 echo "==> Built $IMAGE"
