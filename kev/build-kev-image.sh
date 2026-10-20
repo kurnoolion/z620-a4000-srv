@@ -35,16 +35,29 @@ fi
 
 # `uv sync` and `snapshot_download` inside the build container need the corp
 # proxy. `sudo` normally strips http_proxy / https_proxy; recover from
-# /etc/environment if the current shell doesn't have them. Best-effort — if
-# the var isn't there, grep returns 1 and we just move on without it.
+# /etc/environment or /etc/wgetrc if the current shell doesn't have them.
+# Best-effort — grep's no-match (exit 1) must not kill the script.
 set +e
-if [ -z "${http_proxy:-}${HTTP_PROXY:-}${https_proxy:-}${HTTPS_PROXY:-}" ] \
-   && [ -r /etc/environment ]; then
-  for var in http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY; do
-    val=$(grep -E "^${var}=" /etc/environment 2>/dev/null | tail -1 \
-          | sed -e "s/^${var}=//" -e 's/^"//' -e 's/"$//')
-    [ -n "$val" ] && export "${var}=${val}"
-  done
+if [ -z "${http_proxy:-}${HTTP_PROXY:-}${https_proxy:-}${HTTPS_PROXY:-}" ]; then
+  # Source 1: /etc/environment (KEY=VALUE lines)
+  if [ -r /etc/environment ]; then
+    for var in http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY; do
+      val=$(grep -E "^${var}=" /etc/environment 2>/dev/null | tail -1 \
+            | sed -e "s/^${var}=//" -e 's/^"//' -e 's/"$//')
+      [ -n "$val" ] && export "${var}=${val}"
+    done
+  fi
+  # Source 2: /etc/wgetrc (KEY = VALUE lines, with optional spaces around =)
+  if [ -r /etc/wgetrc ] && [ -z "${http_proxy:-}${https_proxy:-}" ]; then
+    for var in http_proxy https_proxy no_proxy; do
+      # Match "key = value" or "key=value", skip commented lines (#).
+      val=$(grep -E "^[[:space:]]*${var}[[:space:]]*=" /etc/wgetrc 2>/dev/null \
+            | grep -v '^[[:space:]]*#' | tail -1 \
+            | sed -E "s|^[[:space:]]*${var}[[:space:]]*=[[:space:]]*||" \
+            | sed -e 's/^"//' -e 's/"$//' -e 's/[[:space:]]*$//')
+      [ -n "$val" ] && export "${var}=${val}" && export "$(echo "$var" | tr a-z A-Z)=${val}"
+    done
+  fi
 fi
 set -e
 
