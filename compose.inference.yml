@@ -1,12 +1,14 @@
-# vLLM + TEI (embed) + TEI (reranker) on RTX A4000 (16 GB).
+# vLLM + Kev (time-share) + TEI (embed, GPU) + TEI (reranker, GPU) on RTX A4000 (16 GB).
 #
-# GPU memory split (default):
-#   vLLM (GPU)         ~14.4 GB  ← VLLM_GPU_UTIL=0.90 of 16 GB
-#   TEI embed (CPU)         ~0
-#   TEI reranker (CPU)      ~0
+# GPU memory budget (steady + batch peak, concurrent):
+#   kev (bf16)              ~10 GB   LoRA + head on Qwen3.5-4B-Base, time-shared
+#   vllm (AWQ, native 32K)  ~8.8 GB  VLLM_GPU_UTIL=0.55 of 16 GB, time-shared
+#   tei                     ~2.5 GB  weights + capped batch
+#   tei-reranker            ~2.3 GB  weights + capped batch
 #
-# vLLM owns the GPU: pre-allocates its slice at startup. TEI is CPU-only
-# and depends on nothing GPU-side.
+# vllm and kev are mutually exclusive via Docker Compose profiles — bring up with
+# `make up llm=<vllm|kev>` (that also stops the other if running). TEI + Caddy
+# are always started.
 
 x-gpu-reservation: &gpu
   deploy:
@@ -19,6 +21,7 @@ x-gpu-reservation: &gpu
 
 services:
   vllm:
+    profiles: [vllm]
     image: ${VLLM_IMAGE:-vllm/vllm-openai:v0.6.3}
     container_name: vllm
     restart: unless-stopped
@@ -62,8 +65,8 @@ services:
           --host 0.0.0.0 --port 8000 \
           --model "$$MODEL" \
           --served-model-name "$$NAME" \
-          --gpu-memory-utilization ${VLLM_GPU_UTIL:-0.65} \
-          --max-model-len ${VLLM_MAX_MODEL_LEN:-8192} \
+          --gpu-memory-utilization ${VLLM_GPU_UTIL:-0.55} \
+          --max-model-len ${VLLM_MAX_MODEL_LEN:-32768} \
           --disable-log-requests \
           $$PARSER_FLAG $$ROPE_FLAG
     healthcheck:
@@ -75,11 +78,38 @@ services:
     shm_size: "4gb"
     ipc: host
 
+  kev:
+    profiles: [kev]
+    # Pre-built image on this box: `cd kev && sudo ./build-kev-image.sh`.
+    # Weights (adapter + Qwen3.5-4B-Base rev 1001bb4d) are baked in — no HF
+    # access needed at runtime.
+    image: ${KEV_IMAGE:-kev-serve:local}
+    container_name: kev
+    restart: unless-stopped
+    networks: [apex]
+    <<: *gpu
+    environment:
+      KEV_DTYPE: ${KEV_DTYPE:-bf16}
+      KEV_TEMPERATURE: ${KEV_TEMPERATURE:-}
+      KEV_API_KEY: ${KEV_API_KEY:-}
+      KEV_PREFIX_CACHE: ${KEV_PREFIX_CACHE:-}
+    healthcheck:
+      # Model loads BEFORE uvicorn listens, so a TCP accept on 8008 means the
+      # model is ready. Avoids auth concerns if KEV_API_KEY is set (/v1/* 401s).
+      test: ["CMD-SHELL", "python3 -c 'import socket,sys; s=socket.socket(); s.settimeout(2); s.connect((\"localhost\",8008))' || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 10
+      start_period: 180s
+    shm_size: "4gb"
+    ipc: host
+
   tei:
-    image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.5}
+    image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:1.5}
     container_name: tei
     restart: unless-stopped
     networks: [apex]
+    <<: *gpu
     environment:
       HF_TOKEN: ${HF_TOKEN}
       HF_HOME: /hf-cache
@@ -92,6 +122,9 @@ services:
       - --model-id=/local-models/${TEI_MODEL:-bge-m3}
       - --port=80
       - --huggingface-hub-cache=/hf-cache
+      - --max-batch-tokens=${TEI_MAX_BATCH_TOKENS:-32768}
+      - --max-concurrent-requests=${TEI_MAX_CONCURRENT:-4}
+      - --max-client-batch-size=256
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80 && printf \"GET /health HTTP/1.0\\r\\n\\r\\n\" >&3 && head -1 <&3 | grep -q 200'"]
       interval: 30s
@@ -100,10 +133,11 @@ services:
       start_period: 120s
 
   tei-reranker:
-    image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.5}
+    image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:1.5}
     container_name: tei-reranker
     restart: unless-stopped
     networks: [apex]
+    <<: *gpu
     environment:
       HF_TOKEN: ${HF_TOKEN}
       HF_HOME: /hf-cache
@@ -114,6 +148,9 @@ services:
       - --model-id=/local-models/${TEI_RERANKER_MODEL:-bge-reranker-large}
       - --port=80
       - --huggingface-hub-cache=/hf-cache
+      - --max-batch-tokens=${TEI_RERANKER_MAX_BATCH_TOKENS:-16384}
+      - --max-concurrent-requests=${TEI_MAX_CONCURRENT:-4}
+      - --max-client-batch-size=256
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/80 && printf \"GET /health HTTP/1.0\\r\\n\\r\\n\" >&3 && head -1 <&3 | grep -q 200'"]
       interval: 30s

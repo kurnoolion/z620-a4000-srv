@@ -1,5 +1,5 @@
 # z620-a4000-srv — operator interface.
-# Mirrors the dgx-spark-srv Makefile so muscle memory carries over.
+# Mirrors the dgx-spark-srv Makefile where it makes sense.
 
 SHELL := /bin/bash
 .ONESHELL:
@@ -13,9 +13,10 @@ endif
 
 COMPOSE_FILES := -f compose.inference.yml -f compose.gateway.yml
 COMPOSE := docker compose $(COMPOSE_FILES)
+ALL_PROFILES := vllm,kev
 
-.PHONY: help init up down restart apply logs ps health \
-        download-models pull-stack \
+.PHONY: help init up down llm llm-stop restart apply logs ps health \
+        build-kev download-models pull-stack \
         install-system prune prune-status backup usage-up usage-down usage-status
 
 help:  ## Show this help.
@@ -28,31 +29,54 @@ init:  ## Create docker network + storage roots. Run once.
 	@mkdir -p $${ARCHIVE_ROOT:-/archive}/backups
 	@echo "init: network 'apex' ready; storage roots created."
 
-up:  ## Bring up the stack (vLLM, then TEI + gateway).
-	$(COMPOSE) up -d vllm
-	@echo "Waiting for vLLM /health (up to 5 min for first cold load)..."
-	@for i in $$(seq 1 60); do \
-	  docker exec vllm python3 -c 'import urllib.request,sys;sys.exit(0 if urllib.request.urlopen("http://localhost:8000/health",timeout=2).status==200 else 1)' 2>/dev/null && break; \
+up:  ## Bring up TEI + Caddy + specified LLM; stops the other LLM if up. Usage: make up llm=<vllm|kev>
+	@test -n "$(llm)" || { echo "usage: make up llm=<vllm|kev>"; exit 1; }
+	@case "$(llm)" in vllm|kev) ;; *) echo "ERROR: llm must be 'vllm' or 'kev'"; exit 1 ;; esac
+	@other=$$([ "$(llm)" = vllm ] && echo kev || echo vllm); \
+	 if docker ps --format '{{.Names}}' | grep -q "^$$other$$"; then \
+	   echo "Stopping $$other to free the GPU..."; \
+	   docker stop $$other && docker rm $$other; \
+	 fi
+	COMPOSE_PROFILES=$(llm) $(COMPOSE) up -d
+	@echo "Waiting for $(llm) healthy (up to 10 min for first cold load)..."
+	@for i in $$(seq 1 120); do \
+	  state=$$(docker inspect -f '{{.State.Health.Status}}' $(llm) 2>/dev/null || echo missing); \
+	  [ "$$state" = "healthy" ] && { echo "$(llm) healthy."; break; }; \
 	  sleep 5; \
 	done
-	$(COMPOSE) up -d
 
 down:  ## Stop everything (containers + network state).
-	$(COMPOSE) down
+	COMPOSE_PROFILES=$(ALL_PROFILES) $(COMPOSE) down
 
-restart:  ## Restart one service (does NOT apply .env/compose changes): `make restart svc=vllm`
-	@test -n "$(svc)" || { echo "usage: make restart svc=<vllm|tei|tei-reranker|caddy>"; exit 1; }
-	$(COMPOSE) restart $(svc)
+llm:  ## Show which LLM container is up.
+	@for s in vllm kev; do \
+	  state=$$(docker inspect -f '{{.State.Status}}' $$s 2>/dev/null || echo "not created"); \
+	  echo "$$s: $$state"; \
+	done
 
-apply:  ## Recreate a service so .env/compose/Caddyfile changes take effect: `make apply svc=vllm`
-	@test -n "$(svc)" || { echo "usage: make apply svc=<vllm|tei|tei-reranker|caddy>"; exit 1; }
-	$(COMPOSE) up -d --force-recreate $(svc)
+llm-stop:  ## Stop both LLM services (keeps TEI + Caddy up).
+	-@docker stop vllm kev 2>/dev/null; true
+	-@docker rm   vllm kev 2>/dev/null; true
 
-logs:  ## Tail logs. `make logs svc=vllm` or omit svc for all.
-	$(COMPOSE) logs -f --tail=200 $(svc)
+build-kev:  ## One-shot build of the kev-serve:local image on this box.
+	cd kev && ./build-kev-image.sh
 
-ps:  ## List stack containers.
-	$(COMPOSE) ps
+restart:  ## Restart a running service: `make restart svc=<vllm|kev|tei|tei-reranker|caddy>`
+	@test -n "$(svc)" || { echo "usage: make restart svc=<vllm|kev|tei|tei-reranker|caddy>"; exit 1; }
+	docker restart $(svc)
+
+apply:  ## Recreate a service to pick up .env/compose/Caddyfile changes: `make apply svc=<...>`
+	@test -n "$(svc)" || { echo "usage: make apply svc=<vllm|kev|tei|tei-reranker|caddy>"; exit 1; }
+	@case "$(svc)" in \
+	  vllm|kev) COMPOSE_PROFILES=$(svc) $(COMPOSE) up -d --force-recreate $(svc) ;; \
+	  *)        COMPOSE_PROFILES=$(ALL_PROFILES) $(COMPOSE) up -d --force-recreate $(svc) ;; \
+	esac
+
+logs:  ## Tail logs. `make logs svc=<svc>` or omit svc for everything that's up.
+	COMPOSE_PROFILES=$(ALL_PROFILES) $(COMPOSE) logs -f --tail=200 $(svc)
+
+ps:  ## List stack containers (including stopped ones in both profiles).
+	COMPOSE_PROFILES=$(ALL_PROFILES) $(COMPOSE) ps
 
 health:  ## Run health.sh (PASS/WARN/FAIL probes; non-zero on FAIL).
 	@./health.sh

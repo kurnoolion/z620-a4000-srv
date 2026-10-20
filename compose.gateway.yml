@@ -1,5 +1,5 @@
 # Caddy reverse proxy with TLS — same pattern as dgx-spark-srv.
-# Routes: /v1/* → vLLM, /metrics → vLLM metrics, /embed/* → TEI, /rerank/* → TEI reranker.
+# Routes: /v1/* → vLLM, /metrics → vLLM metrics, /systemone/* → kev, /embed/* → TEI, /rerank/* → TEI reranker.
 # Browser access via https://$SITE_HOST/ (hostname only, never IP).
 
 services:

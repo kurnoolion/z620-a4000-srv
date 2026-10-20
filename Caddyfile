@@ -73,6 +73,11 @@
 		reverse_proxy vllm:8000
 	}
 
+	# Kev decision model — TypeSafe System One API.
+	handle /systemone/* {
+		reverse_proxy kev:8008
+	}
+
 	# TEI (embed + rerank) — see (tei_routes) snippet above.
 	import tei_routes
 	import grafana_route
@@ -108,6 +113,9 @@
 	}
 	handle /metrics {
 		reverse_proxy vllm:8000
+	}
+	handle /systemone/* {
+		reverse_proxy kev:8008
 	}
 	import tei_routes
 	import grafana_route
