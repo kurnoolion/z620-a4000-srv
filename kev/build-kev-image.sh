@@ -35,7 +35,9 @@ fi
 
 # `uv sync` and `snapshot_download` inside the build container need the corp
 # proxy. `sudo` normally strips http_proxy / https_proxy; recover from
-# /etc/environment if the current shell doesn't have them.
+# /etc/environment if the current shell doesn't have them. Best-effort — if
+# the var isn't there, grep returns 1 and we just move on without it.
+set +e
 if [ -z "${http_proxy:-}${HTTP_PROXY:-}${https_proxy:-}${HTTPS_PROXY:-}" ] \
    && [ -r /etc/environment ]; then
   for var in http_proxy https_proxy no_proxy HTTP_PROXY HTTPS_PROXY NO_PROXY; do
@@ -44,6 +46,7 @@ if [ -z "${http_proxy:-}${HTTP_PROXY:-}${https_proxy:-}${HTTPS_PROXY:-}" ] \
     [ -n "$val" ] && export "${var}=${val}"
   done
 fi
+set -e
 
 BUILD_ARGS=(
   --tag "$IMAGE"
