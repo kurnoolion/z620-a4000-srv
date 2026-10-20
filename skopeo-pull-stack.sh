@@ -16,8 +16,21 @@ IMAGES_FROM_COMPOSE=$(
     | sort -u
 )
 
+# Also discover `FROM` base images from any Dockerfile in subdirs (kev/, …) —
+# these are needed to BUILD locally-built images (e.g. kev-serve:local), not
+# just to run compose services.
+IMAGES_FROM_DOCKERFILES=$(
+  find . -maxdepth 3 -name Dockerfile -not -path './.git/*' 2>/dev/null \
+    | xargs -I{} grep -hE '^FROM\s+' {} 2>/dev/null \
+    | sed -E 's/^FROM\s+([^ ]+).*/\1/' \
+    | grep -vE '^(scratch$|\$)' \
+    | sort -u
+)
+
+IMAGES_DISCOVERED=$(printf '%s\n%s\n' "$IMAGES_FROM_COMPOSE" "$IMAGES_FROM_DOCKERFILES" | sort -u)
+
 # Allow overrides via $1..$N.
-if [ "$#" -gt 0 ]; then IMAGES=("$@"); else mapfile -t IMAGES <<< "$IMAGES_FROM_COMPOSE"; fi
+if [ "$#" -gt 0 ]; then IMAGES=("$@"); else mapfile -t IMAGES <<< "$IMAGES_DISCOVERED"; fi
 
 if [ "${#IMAGES[@]}" -eq 0 ]; then
   echo "ERROR: no images discovered." >&2

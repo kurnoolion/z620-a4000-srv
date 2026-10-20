@@ -23,6 +23,16 @@ BASE_REVISION="${BASE_REVISION:-1001bb4d}"
 
 cd "$(dirname "$0")"
 
+# docker.io can reset / EOF for `docker pull` through the corp proxy on work
+# hosts. Delegate the base-image fetch to ../skopeo-pull-stack.sh, which uses
+# skopeo (proxy-friendly) and loads the result into the local docker daemon.
+# No-op if the base image is already loaded.
+BASE_IMAGE=$(sed -nE 's/^FROM\s+([^ ]+).*/\1/p' Dockerfile | head -1)
+if [ -n "$BASE_IMAGE" ]; then
+  echo "[+] staging base image $BASE_IMAGE via skopeo-pull-stack.sh..."
+  ../skopeo-pull-stack.sh "$BASE_IMAGE"
+fi
+
 echo "==> Building $IMAGE"
 echo "    KEV_REF=$KEV_REF"
 echo "    KEV_MODEL=$KEV_MODEL"
