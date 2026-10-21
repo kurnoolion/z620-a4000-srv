@@ -1,12 +1,23 @@
-# vLLM + Kev (time-share) + TEI embed (GPU) + TEI reranker (CPU) on RTX A4000 (16 GB).
+# vLLM + Kev (time-share) + TEI embed (CPU) + TEI reranker (CPU) on RTX A4000 (16 GB).
 #
 # GPU memory budget (steady + batch peak, concurrent):
-#   kev (bf16 + CUDA Graphs) ~12 GB  LoRA + head on Qwen3.5-4B-Base, time-shared
-#   vllm (AWQ, native 32K)   ~8.8 GB VLLM_GPU_UTIL=0.55 of 16 GB, time-shared
-#   tei (embed, GPU)         ~1.3 GB bge-m3 weights + capped batch
-#   tei-reranker (CPU)       0 GB    runs on CPU; bge-reranker-large on 12-core
-#                                    is ~100-200 ms per 20-pair batch — tolerable
-#                                    since rerank pairs are ≤512 tokens
+#   kev (bf16 + CUDA Graphs) ~14 GB  LoRA + head on Qwen3.5-4B-Base, time-shared.
+#                                    Kev's CudaGraphs grab ~2-3 GB on top of
+#                                    the model weights; constants (GRAPH_ROWS,
+#                                    GRAPH_ROW) are source-level, not env-tunable.
+#   vllm (AWQ, native 32K)   ~8.8 GB VLLM_GPU_UTIL=0.55 of 16 GB, time-shared.
+#                                    Leaves plenty for GPU TEI if preferred under
+#                                    the vllm profile (edit compose below).
+#   tei (embed, CPU)         0 GB    bge-m3 on CPU — short-query embed is fast
+#                                    enough (~50-100 ms); 128K-payload embed is
+#                                    slower (~15-30 s) but tolerable for the
+#                                    cross-carrier exception path.
+#   tei-reranker (CPU)       0 GB    bge-reranker-large on CPU; rerank pairs are
+#                                    ≤512 tokens → ~100-200 ms per 20-pair batch.
+#
+# To run EITHER TEI service on GPU (e.g., when the time-share LLM is vllm and
+# has spare VRAM): swap its *_IMAGE env to the CUDA tag AND add `<<: *gpu`
+# to the service below.
 #
 # vllm and kev are mutually exclusive via Docker Compose profiles — bring up with
 # `make up llm=<vllm|kev>` (that also stops the other if running). TEI + Caddy
@@ -114,11 +125,10 @@ services:
     ipc: host
 
   tei:
-    image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:1.5}
+    image: ${TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:cpu-1.5}
     container_name: tei
     restart: unless-stopped
     networks: [apex]
-    <<: *gpu
     environment:
       HF_TOKEN: ${HF_TOKEN}
       HF_HOME: /hf-cache
