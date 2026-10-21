@@ -90,10 +90,14 @@ pull-stack:  ## Skopeo-based image pull (proxy fallback).
 install-system:  ## Install docker log rotation + journald cap.
 	@sudo ./install-system.sh
 
-prune:  ## Reclaim images >14d, stopped containers, build cache.
-	docker image prune -a --filter "until=336h" -f
+# Never removes tagged images: with vllm/kev time-sharing, the idle LLM's
+# image has no running container, and `image prune -a` would delete it
+# (kev-serve:local is a 15-30 min rebuild). Remove a specific image with
+# `docker rmi <repo:tag>` instead.
+prune:  ## Reclaim stopped containers, dangling images, build cache >14d. Keeps all tagged images.
 	docker container prune -f
-	docker builder prune -f
+	docker image prune -f
+	docker builder prune -f --filter until=336h
 
 prune-status:  ## Show reclaimable docker space (read-only).
 	docker system df

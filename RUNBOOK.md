@@ -186,15 +186,16 @@ Decision guide (TEI is CPU by default; Kev's footprint is fixed at ~14 GB):
 df -h / /archive
 du -sh /archive/models/* | sort -h
 make prune-status         # what docker can reclaim
-make prune                # reclaim images > 14d + build cache + stopped containers
+make prune                # stopped containers + dangling images + build cache >14d
 ```
 
-**Careful with image prunes.** `make prune` and `docker image prune -a`
-delete every image not used by a running container — with time-sharing,
-that includes the idle LLM's image. Re-fetch vLLM with `make pull-stack`;
-`kev-serve:local` can only be rebuilt (`make build-kev`, ~15-30 min). Safe
-alternatives: `docker builder prune -af` and `docker image prune -f`
-(dangling only), or `docker rmi <specific-image>`.
+`make prune` never removes tagged images, so the idle LLM's image survives.
+**Don't run `docker image prune -a` / `docker system prune -a` by hand:**
+they delete every image without a running container — with time-sharing,
+that includes the idle LLM's image. vLLM can be re-fetched with
+`make pull-stack`; `kev-serve:local` can only be rebuilt (`make build-kev`,
+~15-30 min). To drop a specific image: `docker rmi <repo:tag>`. To reclaim
+all build cache (costs a slow next `build-kev`): `docker builder prune -af`.
 
 ## Restarting individual services
 
