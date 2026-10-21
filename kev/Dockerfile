@@ -11,6 +11,15 @@
 
 FROM python:3.13-slim-bookworm
 
+# Corp DPI resets large post-quantum TLS ClientHellos (OpenSSL 3.5+ in slim
+# base defaults to hybrid X25519MLKEM768). Force classical ECDH groups so
+# apt/pip/uv/HF ClientHellos fit the DPI's expected shape.
+# Same stanza as dgx-spark-srv/model-switch/Dockerfile (verified working).
+RUN printf '%s\n' 'openssl_conf = openssl_init' '[openssl_init]' \
+    'ssl_conf = ssl_sect' '[ssl_sect]' 'system_default = system_default_sect' \
+    '[system_default_sect]' 'Groups = X25519:P-256:P-384' > /etc/openssl-classical.cnf
+ENV OPENSSL_CONF=/etc/openssl-classical.cnf
+
 RUN apt-get update && apt-get install -y --no-install-recommends \
       git curl ca-certificates libgomp1 \
     && rm -rf /var/lib/apt/lists/*
@@ -26,10 +35,7 @@ ARG KEV_REF=main
 RUN git clone --depth 1 --branch "${KEV_REF}" "${KEV_REPO}" /app
 
 # Pulls torch (CUDA 12.4 wheels from pypi), fastapi, uvicorn, transformers, peft, …
-# Corp networks sometimes reset bursty parallel TLS fetches (SSL inspection /
-# rate-limiting). Serialize downloads and raise the per-request timeout so
-# the big NVIDIA CUDA wheels (~1 GB combined) don't trip connection resets.
-RUN UV_CONCURRENT_DOWNLOADS=1 UV_HTTP_TIMEOUT=180 uv sync --extra serve
+RUN uv sync --extra serve
 
 # Bake weights (~8.2 GB total). BASE_REVISION pin is important: the LoRA
 # adapter is only valid against this exact backbone revision — later
