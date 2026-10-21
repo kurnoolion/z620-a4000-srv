@@ -73,8 +73,8 @@
 		reverse_proxy vllm:8000
 	}
 
-	# Kev decision model — TypeSafe System One API.
-	handle /systemone/* {
+	# Kev decision model — prefix stripped: /systemone/v1/... → kev:8008/v1/...
+	handle_path /systemone/* {
 		reverse_proxy kev:8008
 	}
 
@@ -114,7 +114,7 @@
 	handle /metrics {
 		reverse_proxy vllm:8000
 	}
-	handle /systemone/* {
+	handle_path /systemone/* {
 		reverse_proxy kev:8008
 	}
 	import tei_routes
