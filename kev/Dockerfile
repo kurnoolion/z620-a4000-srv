@@ -24,9 +24,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 ENV HF_HOME=/opt/hf-cache \
-    HF_HUB_ENABLE_HF_TRANSFER=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    HF_HUB_DISABLE_XET=1
 
 WORKDIR /app
 ARG KEV_REPO=https://github.com/jaredpalmer/kev.git
