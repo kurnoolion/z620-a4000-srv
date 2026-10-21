@@ -26,7 +26,10 @@ ARG KEV_REF=main
 RUN git clone --depth 1 --branch "${KEV_REF}" "${KEV_REPO}" /app
 
 # Pulls torch (CUDA 12.4 wheels from pypi), fastapi, uvicorn, transformers, peft, …
-RUN uv sync --extra serve
+# Corp networks sometimes reset bursty parallel TLS fetches (SSL inspection /
+# rate-limiting). Serialize downloads and raise the per-request timeout so
+# the big NVIDIA CUDA wheels (~1 GB combined) don't trip connection resets.
+RUN UV_CONCURRENT_DOWNLOADS=1 UV_HTTP_TIMEOUT=180 uv sync --extra serve
 
 # Bake weights (~8.2 GB total). BASE_REVISION pin is important: the LoRA
 # adapter is only valid against this exact backbone revision — later
