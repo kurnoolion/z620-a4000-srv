@@ -1,7 +1,8 @@
 # z620-a4000-srv
 
 Docker Compose stack for an **HP Z620 + NVIDIA RTX A4000 (16 GB)** running
-local inference (vLLM + TEI) for the **nora** and **hilda** projects.
+local inference (vLLM **or** Kev-4B, plus TEI) for the **nora** and **hilda**
+projects.
 
 A smaller sibling to `dgx-spark-srv`: same operator interface (`make up`,
 `make health`), same Caddy gateway pattern, but tuned to a 24 GB / 16 GB-VRAM
@@ -23,10 +24,15 @@ Postgres/Redis/Qdrant/MinIO here — those live elsewhere).
 
 | Service | Image | Role |
 |---|---|---|
-| **vLLM** | `vllm/vllm-openai:v0.6.3` | One LLM ≤12B (AWQ/GPTQ) — OpenAI-compatible chat/completions |
+| **vLLM** *(time-shared)* | `vllm/vllm-openai:v0.6.3` | One LLM ≤12B (AWQ/GPTQ) — OpenAI-compatible chat/completions |
+| **Kev** *(time-shared)* | `kev-serve:local` (built on-box) | Kev-4B decision model — TypeSafe System One API (`/v1/systemone`). LoRA + pointer head on frozen `Qwen/Qwen3.5-4B-Base`. See [kev/](kev/) |
 | **TEI** | `text-embeddings-inference:cpu-1.5` | Embeddings (default `bge-m3`) — CPU |
 | **TEI reranker** | `text-embeddings-inference:cpu-1.5` | Reranking (default `bge-reranker-large`) — CPU |
 | **Caddy** | `caddy:2-alpine` | TLS gateway, hostname-only routing |
+
+**vLLM and Kev never run together** — each needs most of the 16 GB card.
+Docker Compose profiles (`vllm`, `kev`) enforce this; `make up llm=<vllm|kev>`
+starts one and stops the other. TEI + Caddy are always up.
 
 | **claude-usage/** (optional, standalone) | own compose project | **Claude Code team usage ledger** (tokens / cost / sessions per developer) + time-boxed model grants. Runs on any Docker host; here it's co-hosted and Caddy proxies `/grafana/` to it. See [claude-usage/README.md](claude-usage/README.md). |
 
@@ -49,9 +55,13 @@ TL;DR once the box is provisioned:
 cp .env.example .env          # fill in, then chmod 600
 make init                      # network + storage dirs
 make download-models           # pull VLLM_MODEL + TEI_MODEL + reranker
-make up                        # vLLM, then TEI + Caddy
+make pull-stack                # images via skopeo (corp proxy resets docker pull)
+make build-kev                 # one-shot: build kev-serve:local (weights baked in)
+make up llm=kev                # or llm=vllm — TEI + Caddy + the chosen LLM
 make health
 ```
+
+On this box, run `make` targets with `sudo` (snap Docker).
 
 ## Routes (via Caddy, `https://$SITE_HOST`)
 
@@ -59,34 +69,36 @@ make health
 |---|---|---|
 | `/v1/*` | vLLM :8000 | OpenAI-compatible chat / completions. **Also on plain HTTP** so cert-averse clients (nora/hilda RAG pipelines) can skip TLS. |
 | `/metrics` | vLLM :8000 | Prometheus-format vLLM metrics (request latency, tokens/s, queue depth, KV-cache hit rate, …). **Also on plain HTTP** for in-cluster Prom scrapes. |
+| `/systemone/*` | Kev :8008 (prefix stripped) | System One API: `GET /systemone/v1/models`, `POST /systemone/v1/systemone` (also `/permute`, `/separate`). Clients use base URL `https://$SITE_HOST/systemone`. **Also on plain HTTP.** |
 | `/embed/*` | TEI :80 | TEI-native embeddings (`{"inputs":[...]}` → `[[floats]]`) |
 | `/rerank/*` | TEI reranker :80 | reranking (Cohere-compatible `/rerank`). **Also on plain HTTP** for the same reason. |
 | `/tei/*` | TEI :80 (prefix stripped) | OpenAI-compatible embeddings: `POST /tei/v1/embeddings` with `{"model","input":[...]}` → `{"data":[{"index","embedding"}]}`. The request's `model` value is ignored (TEI serves one model); the response echoes the served `--model-id` path. |
 
 | `/grafana/*` | host :3000 (claude-usage stack) | Claude Code usage dashboards, if `make usage-up` is running. **Also on plain HTTP.** |
 
-Everything else: 404.
+Only the active LLM's routes answer — the other returns 502 (`/v1/*` and
+`/metrics` with Kev up; `/systemone/*` with vLLM up). Everything else: 404.
 
 ## GPU memory budget (16 GB VRAM)
 
-| Consumer | Target | Enforced by |
+| Consumer | VRAM | Notes |
 |---|---|---|
-| **vLLM** | ~14.4 GB | `VLLM_GPU_UTIL=0.90` (fraction of 16 GB) |
-| **TEI / reranker** | 0 (CPU) | default image is `cpu-1.5` |
+| **Kev** (when active) | ~14 GB | bf16 weights + CUDA Graph buffers. Graph sizes are source constants, not env-tunable — this is why TEI stays on CPU. |
+| **vLLM** (when active) | ~8.8 GB | `VLLM_GPU_UTIL=0.55`, Qwen2.5-7B-AWQ at native 32K (`VLLM_MAX_MODEL_LEN=32768`, no YaRN) |
+| **TEI / reranker** | 0 (CPU) | `cpu-1.5` images |
 
-vLLM pre-allocates its slice at boot. At `0.90` with Qwen2.5-7B-AWQ and
-`VLLM_MAX_MODEL_LEN=131072` (YaRN-extended), the KV cache ends up ~7 GB on
-top of ~5 GB of AWQ weights, with the rest for activations/overhead.
-
-Lower `VLLM_GPU_UTIL` and/or `VLLM_MAX_MODEL_LEN` if you want headroom for a
-GPU reranker (switch `TEI_IMAGE` in `.env` to the CUDA image). Nothing else on
-this box needs VRAM — Ollama has been removed in favor of a vLLM-only serve.
+Under the `vllm` profile there is room to move TEI to GPU (swap `TEI_IMAGE`
+to the CUDA tag and add `<<: *gpu` to the `tei` service), but don't leave it
+there when switching to Kev — Kev OOMs at startup if anything else holds
+>~1 GB of VRAM. 128K YaRN on vLLM (`VLLM_GPU_UTIL=0.90`) only works with TEI
+on CPU.
 
 ## Model picks (sensible defaults)
 
 | Role | Default | Why |
 |---|---|---|
-| vLLM LLM | `Qwen2.5-7B-Instruct-AWQ` | ~5 GB AWQ + KV cache fits 0.90 split with 128K YaRN-extended context; strong general model |
+| Decision model (Kev) | `jaredpalmer/kev-4b` on `Qwen/Qwen3.5-4B-Base@1001bb4d` | Open-weights stand-in for hosted Jev — same wire format, so swapping to Jev later is a config change. Base revision is pinned: the adapter is only valid against it. |
+| vLLM LLM | `Qwen2.5-7B-Instruct-AWQ` | ~5 GB AWQ + KV cache fits the 0.55 split at native 32K |
 | Embedding | `BAAI/bge-m3` | multilingual, dense+sparse, what nora/hilda already use |
 | Reranker | `BAAI/bge-reranker-large` | ~568M, CPU-fast (~50-150 ms/query), ONNX weights publish |
 
@@ -123,7 +135,8 @@ backend. Only acceptable on a VPN / trusted network. If that ever stops being
 true, the dgx-spark-srv Caddyfile git history has working patterns for:
 
 - **Basic auth (htpasswd)** per route.
-- **Static API key** for `/v1/*`, `/embed/*`, `/rerank/*`.
+- **Static API key** for `/v1/*`, `/embed/*`, `/rerank/*`. (Kev has its own
+  bearer auth: set `KEV_API_KEY` in `.env` and `make apply svc=kev`.)
 - **oauth2-proxy + Caddy `forward_auth`** for full IdP.
 
 ## Storage at a glance
@@ -145,7 +158,8 @@ rebalancing, log tail, backups, and a symptom → fix troubleshooting table.
 
 ## Files
 
-- `compose.inference.yml` — vllm, tei (embed), tei-reranker
+- `compose.inference.yml` — vllm + kev (profiles, time-shared), tei (embed), tei-reranker
+- `kev/` — `Dockerfile` + `build-kev-image.sh` (`make build-kev`) for the on-box Kev image
 - `compose.gateway.yml` + `Caddyfile` — reverse proxy / TLS
 - `claude-usage/` — **standalone** Claude Code usage observability + model grants (own `compose.yaml`, `Makefile`, `.env`, `clients/`, docs). `make usage-up` here, or copy the directory to any Docker host.
 - `Makefile` — operator interface
