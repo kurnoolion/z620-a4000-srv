@@ -25,9 +25,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+# UV_NATIVE_TLS=1: use OpenSSL (classical groups above) instead of uv's
+# bundled rustls, which includes X25519MLKEM768 in ClientHello by default
+# and gets reset by the same corp DPI as the OpenSSL case.
 ENV PATH=/root/.local/bin:$PATH \
     HF_HOME=/opt/hf-cache \
-    HF_HUB_ENABLE_HF_TRANSFER=1
+    HF_HUB_ENABLE_HF_TRANSFER=1 \
+    UV_NATIVE_TLS=1
 
 WORKDIR /app
 ARG KEV_REPO=https://github.com/jaredpalmer/kev.git
