@@ -9,9 +9,13 @@ LOG="$HOME/skopeo-pull-stack.log"
 KEEP_TARS="${KEEP_TARS:-0}"
 
 # Discover images from compose files (one per line, dedup).
+# envsubst only handles `${VAR}` / `$VAR` — compose uses `${VAR:-default}`
+# for inline defaults. Rewrite those to `${VAR}` before envsubst, so vars
+# the Makefile exported from .env substitute cleanly.
 IMAGES_FROM_COMPOSE=$(
   grep -hE '^\s*image:' compose.inference.yml compose.gateway.yml claude-usage/compose.yaml 2>/dev/null \
     | sed -E 's/^\s*image:\s*//; s/[[:space:]]*$//; s/^"//; s/"$//' \
+    | sed -E 's/\$\{([A-Za-z_][A-Za-z0-9_]*):-[^}]*\}/${\1}/g' \
     | envsubst \
     | sort -u
 )
