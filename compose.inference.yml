@@ -88,11 +88,16 @@ services:
     restart: unless-stopped
     networks: [apex]
     <<: *gpu
+    # List form (not map): compose omits unset vars entirely instead of
+    # passing them as empty strings. kev.serve uses `int(os.environ.get(
+    # "KEV_PREFIX_CACHE", "4"))` — the "4" default fires only when the var
+    # is MISSING, not when it's "". Keep .env entries for these commented
+    # out unless you want to override kev's own defaults.
     environment:
-      KEV_DTYPE: ${KEV_DTYPE:-bf16}
-      KEV_TEMPERATURE: ${KEV_TEMPERATURE:-}
-      KEV_API_KEY: ${KEV_API_KEY:-}
-      KEV_PREFIX_CACHE: ${KEV_PREFIX_CACHE:-}
+      - KEV_DTYPE=${KEV_DTYPE:-bf16}
+      - KEV_TEMPERATURE
+      - KEV_API_KEY
+      - KEV_PREFIX_CACHE
     healthcheck:
       # Model loads BEFORE uvicorn listens, so a TCP accept on 8008 means the
       # model is ready. Avoids auth concerns if KEV_API_KEY is set (/v1/* 401s).
